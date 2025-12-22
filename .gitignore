@@ -2,3 +2,4 @@ tetonor
 *.o
 .vscode/ipch/
 .DS_Store
+.vscode/
