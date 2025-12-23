@@ -26,11 +26,13 @@ void free_number_generation(NumberGeneration* number_generation)
 NumberGeneration* _alloc_number_generation(void)
 {
     NumberGeneration* number_generation = malloc(sizeof(NumberGeneration));
-    number_generation->sum_matrix = malloc(sizeof(int*) * 4);
+    number_generation->sum_matrix       = malloc(sizeof(int*) * 4);
+
     for (int i = 0; i < 4; i++)
     {
         number_generation->sum_matrix[i] = malloc(sizeof(int) * 4);
     }
+
     number_generation->available_array = malloc(sizeof(int) * 16);
     return number_generation;
 }
