@@ -3,7 +3,8 @@
 
 #include "number_generation.h"
 
-typedef struct {
+typedef struct
+{
     int difficulty;
 
     /* Number generation related functions */
@@ -11,7 +12,7 @@ typedef struct {
     void (*free_number_generation_f)(NumberGeneration*);
 } GamePort;
 
-GamePort *create_game_port(void);
-void destroy_game_port(GamePort *game_port);
+GamePort* create_game_port(void);
+void destroy_game_port(GamePort* game_port);
 
 #endif
