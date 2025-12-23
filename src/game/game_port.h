@@ -4,7 +4,7 @@
 #include "number_generation.h"
 
 typedef struct {
-    void *context;
+    int difficulty;
 
     /* Number generation related functions */
     NumberGeneration* (*generate_random_numbers_f)(int);
