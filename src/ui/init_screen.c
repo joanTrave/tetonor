@@ -2,7 +2,8 @@
 
 #include "init_screen.h"
 
-void init_screen(void) {
+void init_screen(void)
+{
     initscr();
     noecho();
     cbreak();
