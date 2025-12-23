@@ -1,15 +1,10 @@
 #include <ncurses.h>
 
+#include "ui/ui.h"
+
 int main(void) {
-    initscr();
-    noecho();
-    cbreak();
-    keypad(stdscr, TRUE);
-
-    mvprintw(0, 0, "Tetonor - press any key to exit");
-    refresh();
-
-    getch();
-    endwin();
+    GamePort *game_port = create_game_port();
+    ui_run(game_port);
+    destroy_game_port(game_port);
     return 0;
 }
