@@ -2,7 +2,6 @@ BasedOnStyle: LLVM
 
 IndentWidth: 4
 TabWidth: 4
-UseTab: Never
 
 BreakBeforeBraces: Allman
 BraceWrapping:
@@ -15,6 +14,8 @@ BraceWrapping:
 AllowShortIfStatementsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
 AllowShortLoopsOnASingleLine: false
+
+AlignConsecutiveAssignments: AcrossEmptyLines
 
 IndentCaseLabels: true
 ColumnLimit: 80
