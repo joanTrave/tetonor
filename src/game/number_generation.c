@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <time.h>
 
 #include "number_generation.h"
 
@@ -98,7 +97,6 @@ void _mask_available_array(NumberGeneration* number_generation, int difficulty)
 
 int* _get_randomized_array_positions(void)
 {
-    srand((unsigned)time(NULL));
     int *positions = malloc(sizeof(int) * 16);
     for (int i = 0; i < 16; i++)
     {
