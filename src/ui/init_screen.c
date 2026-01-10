@@ -8,7 +8,5 @@ void init_screen(void)
     noecho();
     cbreak();
     keypad(stdscr, TRUE);
-
-    mvprintw(0, 0, "Tetonor - press ESC to exit");
     refresh();
 }
