@@ -7,6 +7,6 @@ typedef enum
     MENU_EXIT
 } MenuResult;
 
-MenuResult ui_show_start_menu(void);
+void ui_show_start_menu(void);
 
 #endif
