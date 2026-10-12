@@ -3,3 +3,14 @@ tetonor
 .vscode/ipch/
 .DS_Store
 .vscode/
+.claude
+CLAUDE.md
+
+build/
+tetonor.exe
+*.gcda
+*.gcno
+*.gcov
+*.d
+coverage.xml
+coverage/

@@ -1,18 +1,28 @@
-#include <ncurses.h>
+#include <curses.h>
+#include <stdlib.h>
 
 #include "ui.h"
-#include "init_screen.h"
-#include "menu.h"
+#include "keys.h"
 #include "print_layout.h"
 
-void ui_run(GamePort* game_port)
+int ui_run(const GamePort* game_port)
 {
-    init_screen();
-    print_layout(game_port);
-    int ch = getch();
-    while (ch != 27)
-    { // 27 is the ASCII code for ESC
-        ch = getch();
+    NumberGeneration* number_generation =
+        game_port->generate_random_numbers_f(game_port->difficulty);
+    if (number_generation == NULL)
+    {
+        return EXIT_FAILURE;
     }
-    endwin();
+
+    print_layout(number_generation);
+    refresh();
+
+    int key = getch();
+    while (key != TETONOR_KEY_ESCAPE && key != ERR)
+    {
+        key = getch();
+    }
+
+    game_port->free_number_generation_f(number_generation);
+    return EXIT_SUCCESS;
 }
