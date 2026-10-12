@@ -3,6 +3,7 @@
 
 #include "../game/game_port.h"
 
-void ui_run(GamePort* game_port);
+/* Draws a puzzle and waits for ESC. Returns EXIT_SUCCESS or EXIT_FAILURE. */
+int ui_run(const GamePort* game_port);
 
 #endif

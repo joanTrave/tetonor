@@ -1,6 +1,6 @@
-#include <ncurses.h>
+#include <curses.h>
 
-#include "init_screen.h"
+#include "screen.h"
 
 void init_screen(void)
 {
@@ -9,4 +9,9 @@ void init_screen(void)
     cbreak();
     keypad(stdscr, TRUE);
     refresh();
+}
+
+void end_screen(void)
+{
+    endwin();
 }

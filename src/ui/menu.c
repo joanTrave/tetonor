@@ -1,76 +1,88 @@
-#include <ncurses.h>
-#include <stdio.h>
+#include <curses.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "menu.h"
+#include "keys.h"
+#include "layout.h"
 #include "ui.h"
-#include "init_screen.h"
 #include "../game/game_port.h"
 
-#define WIN_H 7
-#define WIN_W 50
+static const char menu_title[]      = "Welcome to Tetonor";
+static const char menu_start_hint[] = "Press SPACE or ENTER to start game";
+static const char menu_exit_hint[]  = "Press ESC to exit";
 
-WINDOW* _init_window(void);
-void _draw_main_menu(WINDOW* win);
-MenuResult _select_menu_option(WINDOW* win);
+static WINDOW* create_menu_window(void);
+static void draw_main_menu(WINDOW* win);
+static MenuResult read_menu_choice(WINDOW* win);
 
-void ui_show_start_menu(void)
+int ui_show_start_menu(void)
 {
-    init_screen();
-    WINDOW* win         = _init_window();
-    GamePort* game_port = create_game_port();
-    _draw_main_menu(win);
-    MenuResult menu_result = _select_menu_option(win);
+    WINDOW* win = create_menu_window();
+    if (win == NULL)
+    {
+        return EXIT_FAILURE;
+    }
+    draw_main_menu(win);
+    MenuResult menu_result = read_menu_choice(win);
+    delwin(win);
     if (menu_result == MENU_EXIT)
     {
-        endwin();
-        return;
+        return EXIT_SUCCESS;
     }
+
     clear();
     refresh();
-    ui_run(game_port);
+
+    GamePort* game_port = create_game_port();
+    if (game_port == NULL)
+    {
+        return EXIT_FAILURE;
+    }
+    int status = ui_run(game_port);
     destroy_game_port(game_port);
+    return status;
 }
 
-WINDOW* _init_window(void)
+static WINDOW* create_menu_window(void)
 {
-    int rows, cols;
+    int rows;
+    int cols;
     getmaxyx(stdscr, rows, cols);
 
-    int start_y = (rows - WIN_H) / 2;
-    int start_x = (cols - WIN_W) / 2;
-
-    return newwin(WIN_H, WIN_W, start_y, start_x);
+    LayoutPoint origin =
+        layout_centered_window_origin(rows, cols, LAYOUT_MENU_H, LAYOUT_MENU_W);
+    return newwin(LAYOUT_MENU_H, LAYOUT_MENU_W, origin.y, origin.x);
 }
 
-void _draw_main_menu(WINDOW* win)
+static void draw_main_menu(WINDOW* win)
 {
     keypad(win, TRUE);
 
     box(win, 0, 0);
 
-    mvwprintw(win, 1, (WIN_W - 17) / 2, "Welcome to Tetonor");
-    mvwprintw(win, 3, 2, "Press SPACE to start game");
-    mvwprintw(win, 4, 2, "Press ESC to exit");
+    int title_col =
+        layout_centered_offset(LAYOUT_MENU_W, (int)strlen(menu_title));
+    mvwprintw(win, LAYOUT_MENU_TITLE_ROW, title_col, "%s", menu_title);
+    mvwprintw(win, LAYOUT_MENU_START_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              menu_start_hint);
+    mvwprintw(win, LAYOUT_MENU_EXIT_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              menu_exit_hint);
 
     wrefresh(win);
 }
 
-MenuResult _select_menu_option(WINDOW* win)
+static MenuResult read_menu_choice(WINDOW* win)
 {
-    int ch;
-    while (1)
+    MenuResult result = MENU_NONE;
+    while (result == MENU_NONE)
     {
-        ch = wgetch(win);
-
-        if (ch == ' ')
+        int key = wgetch(win);
+        if (key == ERR)
         {
-            delwin(win);
-            return MENU_START;
+            return MENU_EXIT; /* input closed: leave instead of spinning */
         }
-
-        if (ch == 27) // ESC
-        {
-            delwin(win);
-            return MENU_EXIT;
-        }
+        result = menu_result_from_key(key, KEY_ENTER);
     }
+    return result;
 }

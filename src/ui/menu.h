@@ -4,9 +4,12 @@
 typedef enum
 {
     MENU_START,
-    MENU_EXIT
+    MENU_EXIT,
+    MENU_NONE /* key ignored */
 } MenuResult;
 
-void ui_show_start_menu(void);
+/* Shows the start menu and runs the game. Returns EXIT_SUCCESS or
+ * EXIT_FAILURE. */
+int ui_show_start_menu(void);
 
 #endif
