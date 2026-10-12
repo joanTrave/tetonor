@@ -47,6 +47,146 @@ static void test_menu_result_from_key_unknown_key_is_ignored(void)
     }
 }
 
+#define TEST_PAD_ENTER_KEY 0x1cb
+#define TEST_LEFT_KEY 0x104
+#define TEST_RIGHT_KEY 0x105
+#define TEST_BACKSPACE_KEY 0x107
+#define TEST_PAD_ZERO_KEY 0x1fa
+#define TEST_RESIZE_KEY 0x19a
+#define TEST_ERR_KEY (-1)
+
+static const BoardKeyCodes test_codes = {TEST_ENTER_KEY,     TEST_PAD_ENTER_KEY,
+                                         TEST_LEFT_KEY,      TEST_RIGHT_KEY,
+                                         TEST_BACKSPACE_KEY, TEST_PAD_ZERO_KEY};
+
+static const BoardKeyCodes unavailable_codes = {
+    TEST_ENTER_KEY, TETONOR_KEY_UNAVAILABLE, TEST_LEFT_KEY,
+    TEST_RIGHT_KEY, TEST_BACKSPACE_KEY,      TETONOR_KEY_UNAVAILABLE};
+
+#define ASSERT_INPUT_COMMAND(key, codes, expected_kind)                        \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_INPUT);           \
+        ASSERT_EQ_INT(command_under_test.input.kind, (expected_kind));         \
+    } while (0)
+
+#define ASSERT_DIGIT_COMMAND(key, codes, expected_digit)                       \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_INPUT);           \
+        ASSERT_EQ_INT(command_under_test.input.kind, BOARD_INPUT_DIGIT);       \
+        ASSERT_EQ_INT(command_under_test.input.digit, (expected_digit));       \
+    } while (0)
+
+#define ASSERT_NO_COMMAND(key, codes)                                          \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_NONE);            \
+        ASSERT_EQ_INT(command_under_test.input.kind, 0);                       \
+        ASSERT_EQ_INT(command_under_test.input.digit, 0);                      \
+    } while (0)
+
+static void test_board_command_from_key_escape_exits(void)
+{
+    BoardCommand command =
+        board_command_from_key(TETONOR_KEY_ESCAPE, &test_codes);
+    ASSERT_EQ_INT(command.kind, BOARD_COMMAND_EXIT);
+    ASSERT_EQ_INT(command.input.kind, 0);
+    ASSERT_EQ_INT(command.input.digit, 0);
+    command = board_command_from_key(TEST_ESCAPE_LITERAL, &test_codes);
+    ASSERT_EQ_INT(command.kind, BOARD_COMMAND_EXIT);
+}
+
+static void test_board_command_from_key_arrows_move_cursor(void)
+{
+    ASSERT_INPUT_COMMAND(TEST_LEFT_KEY, test_codes, BOARD_INPUT_MOVE_LEFT);
+    ASSERT_INPUT_COMMAND(TEST_RIGHT_KEY, test_codes, BOARD_INPUT_MOVE_RIGHT);
+}
+
+static void test_board_command_from_key_main_row_digits_type_digit(void)
+{
+    ASSERT_DIGIT_COMMAND('0', test_codes, 0);
+    ASSERT_DIGIT_COMMAND('5', test_codes, 5);
+    ASSERT_DIGIT_COMMAND('9', test_codes, 9);
+}
+
+static void test_board_command_from_key_every_digit_maps_to_its_value(void)
+{
+    for (int digit = 0; digit < TETONOR_DIGIT_BASE; digit++)
+    {
+        ASSERT_DIGIT_COMMAND(TETONOR_KEY_DIGIT_FIRST + digit, test_codes,
+                             digit);
+    }
+}
+
+static void test_board_command_from_key_numpad_zero_types_zero(void)
+{
+    ASSERT_DIGIT_COMMAND(TEST_PAD_ZERO_KEY, test_codes, 0);
+}
+
+static void test_board_command_from_key_enter_variants_confirm(void)
+{
+    ASSERT_INPUT_COMMAND('\n', test_codes, BOARD_INPUT_CONFIRM);
+    ASSERT_INPUT_COMMAND('\r', test_codes, BOARD_INPUT_CONFIRM);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_CONFIRM);
+    ASSERT_INPUT_COMMAND(TEST_PAD_ENTER_KEY, test_codes, BOARD_INPUT_CONFIRM);
+}
+
+static void test_board_command_from_key_backspace_variants_delete(void)
+{
+    ASSERT_INPUT_COMMAND('\b', test_codes, BOARD_INPUT_DELETE);
+    ASSERT_INPUT_COMMAND(TETONOR_KEY_DELETE, test_codes, BOARD_INPUT_DELETE);
+    ASSERT_INPUT_COMMAND(127, test_codes, BOARD_INPUT_DELETE);
+    ASSERT_INPUT_COMMAND(TEST_BACKSPACE_KEY, test_codes, BOARD_INPUT_DELETE);
+}
+
+static void test_board_command_from_key_space_is_not_a_board_key(void)
+{
+    ASSERT_NO_COMMAND(' ', test_codes);
+}
+
+static void test_board_command_from_key_digit_range_neighbours_are_ignored(void)
+{
+    ASSERT_NO_COMMAND('/', test_codes);
+    ASSERT_NO_COMMAND(':', test_codes);
+}
+
+static void test_board_command_from_key_unrelated_keys_are_ignored(void)
+{
+    const int keys[] = {'a',   'z',  0, TEST_ERR_KEY, TEST_RESIZE_KEY,
+                        0x103, 0x102};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_NO_COMMAND(keys[i], test_codes);
+    }
+}
+
+static void test_board_command_from_key_unavailable_codes_never_match(void)
+{
+    ASSERT_NO_COMMAND(TETONOR_KEY_UNAVAILABLE, unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_PAD_ENTER_KEY, unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_PAD_ZERO_KEY, unavailable_codes);
+}
+
+static void test_board_command_from_key_available_codes_still_work(void)
+{
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, unavailable_codes,
+                         BOARD_INPUT_CONFIRM);
+    ASSERT_INPUT_COMMAND(TEST_LEFT_KEY, unavailable_codes,
+                         BOARD_INPUT_MOVE_LEFT);
+    ASSERT_INPUT_COMMAND(TEST_RIGHT_KEY, unavailable_codes,
+                         BOARD_INPUT_MOVE_RIGHT);
+    ASSERT_INPUT_COMMAND(TEST_BACKSPACE_KEY, unavailable_codes,
+                         BOARD_INPUT_DELETE);
+    ASSERT_DIGIT_COMMAND('7', unavailable_codes, 7);
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -55,5 +195,17 @@ int main(void)
     RUN_TEST(test_menu_result_from_key_enter_key_starts);
     RUN_TEST(test_menu_result_from_key_escape_exits);
     RUN_TEST(test_menu_result_from_key_unknown_key_is_ignored);
+    RUN_TEST(test_board_command_from_key_escape_exits);
+    RUN_TEST(test_board_command_from_key_arrows_move_cursor);
+    RUN_TEST(test_board_command_from_key_main_row_digits_type_digit);
+    RUN_TEST(test_board_command_from_key_every_digit_maps_to_its_value);
+    RUN_TEST(test_board_command_from_key_numpad_zero_types_zero);
+    RUN_TEST(test_board_command_from_key_enter_variants_confirm);
+    RUN_TEST(test_board_command_from_key_backspace_variants_delete);
+    RUN_TEST(test_board_command_from_key_space_is_not_a_board_key);
+    RUN_TEST(test_board_command_from_key_digit_range_neighbours_are_ignored);
+    RUN_TEST(test_board_command_from_key_unrelated_keys_are_ignored);
+    RUN_TEST(test_board_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(test_board_command_from_key_available_codes_still_work);
     return test_harness_result();
 }

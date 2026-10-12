@@ -39,3 +39,12 @@ LayoutPoint layout_available_cell_origin(int index)
     origin.x = LAYOUT_ORIGIN_X + index * LAYOUT_MINI_W;
     return origin;
 }
+
+LayoutPoint layout_result_message_origin(void)
+{
+    LayoutPoint origin;
+    origin.y =
+        layout_available_cell_origin(0).y + LAYOUT_MINI_H + LAYOUT_MESSAGE_GAP;
+    origin.x = LAYOUT_ORIGIN_X;
+    return origin;
+}

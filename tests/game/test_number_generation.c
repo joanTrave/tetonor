@@ -234,6 +234,72 @@ static void test_free_number_generation_accepts_null(void)
     ASSERT_TRUE(1);
 }
 
+static void test_generate_random_numbers_solution_has_no_hidden_values(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+        {
+            int value = number_generation->solution_array[i];
+            if (value == TETONOR_HIDDEN_NUMBER)
+            {
+                free_number_generation(number_generation);
+                ASSERT_TRUE(value != TETONOR_HIDDEN_NUMBER);
+            }
+        }
+        free_number_generation(number_generation);
+    }
+}
+
+static void test_generate_random_numbers_solution_sorted_and_in_range(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        int previous = TETONOR_MIN_VALUE;
+        for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+        {
+            int value = number_generation->solution_array[i];
+            if (!is_in_value_range(value) || value < previous)
+            {
+                free_number_generation(number_generation);
+                ASSERT_TRUE(is_in_value_range(value) && value >= previous);
+            }
+            previous = value;
+        }
+        free_number_generation(number_generation);
+    }
+}
+
+static void test_generate_random_numbers_visible_values_match_solution(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+        {
+            int visible  = number_generation->available_array[i];
+            int solution = number_generation->solution_array[i];
+            if (visible != TETONOR_HIDDEN_NUMBER && visible != solution)
+            {
+                free_number_generation(number_generation);
+                ASSERT_EQ_INT(visible, solution);
+            }
+        }
+        free_number_generation(number_generation);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_generate_random_numbers_returns_non_null);
@@ -249,5 +315,8 @@ int main(void)
     RUN_TEST(test_generate_random_numbers_board_values_within_range);
     RUN_TEST(test_generate_random_numbers_is_deterministic_for_fixed_seed);
     RUN_TEST(test_free_number_generation_accepts_null);
+    RUN_TEST(test_generate_random_numbers_solution_has_no_hidden_values);
+    RUN_TEST(test_generate_random_numbers_solution_sorted_and_in_range);
+    RUN_TEST(test_generate_random_numbers_visible_values_match_solution);
     return test_harness_result();
 }

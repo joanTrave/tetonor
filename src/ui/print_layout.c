@@ -4,16 +4,22 @@
 
 #include "print_layout.h"
 #include "layout.h"
+#include "style.h"
 
 #define NUMBER_BUFFER_SIZE 8
 
-static void print_sum_matrix(const NumberGeneration* number_generation);
-static void print_available_array(const NumberGeneration* number_generation);
+static const char correct_message[] = "CORRECT ANSWER";
+static const char wrong_message[]   = "WRONG ANSWER";
 
-void print_layout(const NumberGeneration* number_generation)
+static void print_sum_matrix(const NumberGeneration* number_generation);
+static void print_available_array(const Board* board);
+static void print_result(const Board* board);
+
+void print_layout(const Board* board)
 {
-    print_sum_matrix(number_generation);
-    print_available_array(number_generation);
+    print_sum_matrix(board->puzzle);
+    print_available_array(board);
+    print_result(board);
 }
 
 static void draw_box(int y, int x, int h, int w)
@@ -62,21 +68,83 @@ static void print_sum_matrix(const NumberGeneration* number_generation)
     }
 }
 
-static void print_available_array(const NumberGeneration* number_generation)
+/* Reverse-video bar across the inner cells, so focus never relies on colour
+ * alone. */
+static void draw_focus_bar(LayoutPoint origin)
+{
+    attr_t focus = A_REVERSE;
+    attr_on(focus, NULL);
+    for (int i = 1; i < LAYOUT_MINI_W - 1; i++)
+    {
+        mvaddch(origin.y + 1, origin.x + i, ' ');
+    }
+    attr_off(focus, NULL);
+}
+
+static void draw_entered_number(LayoutPoint origin, const BoardSlot* slot,
+                                bool focused)
+{
+    attr_t attrs = text_style_attr(TEXT_STYLE_ENTERED);
+    if (!slot->confirmed)
+    {
+        attrs |= A_UNDERLINE;
+    }
+    if (focused)
+    {
+        attrs |= A_REVERSE;
+    }
+    attr_on(attrs, NULL);
+    draw_centered_number(origin.y + 1, origin.x, LAYOUT_MINI_W, slot->value);
+    attr_off(attrs, NULL);
+}
+
+static void print_available_slot(const Board* board, int index)
+{
+    LayoutPoint origin    = layout_available_cell_origin(index);
+    const BoardSlot* slot = &board->slots[index];
+
+    draw_box(origin.y, origin.x, LAYOUT_MINI_H, LAYOUT_MINI_W);
+
+    if (!slot->editable)
+    {
+        draw_centered_number(origin.y + 1, origin.x, LAYOUT_MINI_W,
+                             board->puzzle->available_array[index]);
+        return;
+    }
+    bool focused = index == board->cursor;
+    if (focused)
+    {
+        draw_focus_bar(origin);
+    }
+    if (slot->value != TETONOR_EMPTY_ENTRY)
+    {
+        draw_entered_number(origin, slot, focused);
+    }
+}
+
+static void print_available_array(const Board* board)
 {
     LayoutPoint label = layout_available_label_origin();
     mvprintw(label.y, label.x, "Available:");
 
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
-        LayoutPoint origin = layout_available_cell_origin(i);
-
-        draw_box(origin.y, origin.x, LAYOUT_MINI_H, LAYOUT_MINI_W);
-
-        if (number_generation->available_array[i] != TETONOR_HIDDEN_NUMBER)
-        {
-            draw_centered_number(origin.y + 1, origin.x, LAYOUT_MINI_W,
-                                 number_generation->available_array[i]);
-        }
+        print_available_slot(board, i);
     }
+}
+
+static void print_result(const Board* board)
+{
+    if (board->result == BOARD_RESULT_PENDING)
+    {
+        return;
+    }
+    bool correct = board->result == BOARD_RESULT_CORRECT;
+    attr_t attrs =
+        text_style_attr(correct ? TEXT_STYLE_CORRECT : TEXT_STYLE_WRONG);
+    LayoutPoint origin = layout_result_message_origin();
+    attr_on(attrs, NULL);
+    mvprintw(origin.y, origin.x, "%s",
+             correct ? correct_message : wrong_message);
+    attr_off(attrs, NULL);
 }
