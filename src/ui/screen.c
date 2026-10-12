@@ -1,6 +1,7 @@
 #include <curses.h>
 
 #include "screen.h"
+#include "style.h"
 
 void init_screen(void)
 {
@@ -8,6 +9,7 @@ void init_screen(void)
     noecho();
     cbreak();
     keypad(stdscr, TRUE);
+    init_styles();
     refresh();
 }
 

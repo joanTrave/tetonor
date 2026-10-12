@@ -8,6 +8,7 @@
 #define LAYOUT_MINI_W 5
 #define LAYOUT_MINI_H 3
 #define LAYOUT_SECTION_GAP 2
+#define LAYOUT_MESSAGE_GAP 1 /* blank rows above the result message */
 #define LAYOUT_MENU_H 7
 #define LAYOUT_MENU_W 50
 #define LAYOUT_MENU_TITLE_ROW 1
@@ -29,5 +30,8 @@ LayoutPoint layout_centered_window_origin(int screen_rows, int screen_cols,
 LayoutPoint layout_sum_cell_origin(int row, int col);
 LayoutPoint layout_available_label_origin(void);
 LayoutPoint layout_available_cell_origin(int index);
+
+/* Row/column of the result message, below the available-number boxes. */
+LayoutPoint layout_result_message_origin(void);
 
 #endif

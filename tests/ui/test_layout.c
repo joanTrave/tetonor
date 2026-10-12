@@ -53,6 +53,15 @@ static void test_layout_available_cell_origin_first_and_last(void)
     ASSERT_POINT(layout_available_cell_origin(15), 16, 79);
 }
 
+static void test_layout_result_message_origin_below_available_row(void)
+{
+    LayoutPoint origin = layout_result_message_origin();
+    ASSERT_EQ_INT(origin.y, layout_available_cell_origin(0).y + LAYOUT_MINI_H +
+                                LAYOUT_MESSAGE_GAP);
+    ASSERT_EQ_INT(origin.x, LAYOUT_ORIGIN_X);
+    ASSERT_POINT(origin, 20, 4);
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -63,5 +72,6 @@ int main(void)
     RUN_TEST(test_layout_sum_cell_origin_first_and_last_cell);
     RUN_TEST(test_layout_available_label_origin_above_cells);
     RUN_TEST(test_layout_available_cell_origin_first_and_last);
+    RUN_TEST(test_layout_result_message_origin_below_available_row);
     return test_harness_result();
 }

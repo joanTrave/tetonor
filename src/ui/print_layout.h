@@ -3,7 +3,8 @@
 
 #include "../game/game_port.h"
 
-/* Draws the puzzle. Does not generate or own the data. */
-void print_layout(const NumberGeneration* number_generation);
+/* Draws the puzzle, the player's entries, the cursor and the result. Does not
+ * own the data. */
+void print_layout(const Board* board);
 
 #endif

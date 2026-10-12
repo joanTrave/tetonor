@@ -13,6 +13,9 @@ typedef struct
 {
     int sum_matrix[TETONOR_GRID_SIZE][TETONOR_GRID_SIZE];
     int available_array[TETONOR_CELL_COUNT];
+    /* available_array before masking: the core's judging data. The UI must
+     * not read it. */
+    int solution_array[TETONOR_CELL_COUNT];
 } NumberGeneration;
 
 /* Returns NULL on allocation failure. */

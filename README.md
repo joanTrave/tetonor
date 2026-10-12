@@ -117,6 +117,6 @@ make format-check   # clang-format --dry-run --Werror on src/ and tests/
 ./tetonor
 ```
 
-SPACE or ENTER starts the game, ESC leaves it. On Windows run it in a real console such as
+SPACE or ENTER starts the game, ESC leaves it. On the board, LEFT/RIGHT move between the empty boxes, digits (main row, or numpad with NumLock on) type a number from 0 to 29, BACKSPACE deletes a digit and ENTER confirms the number; the result appears once every box is confirmed. On Windows run it in a real console such as
 Windows Terminal or `cmd`/PowerShell, not in mintty (the default MSYS2 terminal), and put
 `C:\msys64\ucrt64\bin` on `PATH` for the runtime DLLs (or build with `make LDFLAGS=-static`).

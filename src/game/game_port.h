@@ -1,6 +1,7 @@
 #ifndef TETONOR_GAME_PORT_H
 #define TETONOR_GAME_PORT_H
 
+#include "board.h"
 #include "number_generation.h"
 
 #define TETONOR_DEFAULT_DIFFICULTY 1
@@ -12,6 +13,10 @@ typedef struct
     /* Number generation related functions */
     NumberGeneration* (*generate_random_numbers_f)(int difficulty);
     void (*free_number_generation_f)(NumberGeneration* number_generation);
+
+    /* Board entry related functions */
+    void (*init_board_f)(Board* board, const NumberGeneration* puzzle);
+    void (*apply_board_input_f)(Board* board, BoardInput input);
 } GamePort;
 
 /* Returns NULL on allocation failure. */

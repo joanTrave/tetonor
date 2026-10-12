@@ -5,6 +5,7 @@
 
 static void populate_numbers(NumberGeneration* number_generation);
 static void sort_available_array(NumberGeneration* number_generation);
+static void store_solution(NumberGeneration* number_generation);
 static void mask_available_array(NumberGeneration* number_generation,
                                  int difficulty);
 static void fill_shuffled_positions(int positions[], size_t count);
@@ -20,6 +21,7 @@ NumberGeneration* generate_random_numbers(int difficulty)
     }
     populate_numbers(number_generation);
     sort_available_array(number_generation);
+    store_solution(number_generation);
     mask_available_array(number_generation, difficulty);
     return number_generation;
 }
@@ -116,4 +118,13 @@ static int random_value(void)
 {
     return TETONOR_MIN_VALUE +
            rand() % (TETONOR_MAX_VALUE - TETONOR_MIN_VALUE + 1);
+}
+
+static void store_solution(NumberGeneration* number_generation)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        number_generation->solution_array[i] =
+            number_generation->available_array[i];
+    }
 }
