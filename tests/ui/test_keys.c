@@ -54,23 +54,47 @@ static void test_menu_result_from_key_unknown_key_is_ignored(void)
 #define TEST_PAD_ZERO_KEY 0x1fa
 #define TEST_UP_KEY 0x103
 #define TEST_DOWN_KEY 0x102
+#define TEST_PAD_PLUS_KEY 0x1d1
+#define TEST_PAD_STAR_KEY 0x1cf
 #define TEST_HOME_KEY 0x106
 #define TEST_PAGE_DOWN_KEY 0x152
 #define TEST_RESIZE_KEY 0x19a
 #define TEST_ERR_KEY (-1)
 
-static const BoardKeyCodes test_codes = {
-    TEST_ENTER_KEY,     TEST_PAD_ENTER_KEY, TEST_LEFT_KEY, TEST_RIGHT_KEY,
-    TEST_BACKSPACE_KEY, TEST_PAD_ZERO_KEY,  TEST_UP_KEY,   TEST_DOWN_KEY};
+static const BoardKeyCodes test_codes        = {.enter     = TEST_ENTER_KEY,
+                                                .pad_enter = TEST_PAD_ENTER_KEY,
+                                                .left      = TEST_LEFT_KEY,
+                                                .right     = TEST_RIGHT_KEY,
+                                                .backspace = TEST_BACKSPACE_KEY,
+                                                .pad_zero  = TEST_PAD_ZERO_KEY,
+                                                .up        = TEST_UP_KEY,
+                                                .down      = TEST_DOWN_KEY,
+                                                .pad_plus  = TEST_PAD_PLUS_KEY,
+                                                .pad_star  = TEST_PAD_STAR_KEY};
 
 static const BoardKeyCodes unavailable_codes = {
-    TEST_ENTER_KEY,     TETONOR_KEY_UNAVAILABLE, TEST_LEFT_KEY, TEST_RIGHT_KEY,
-    TEST_BACKSPACE_KEY, TETONOR_KEY_UNAVAILABLE, TEST_UP_KEY,   TEST_DOWN_KEY};
+    .enter     = TEST_ENTER_KEY,
+    .pad_enter = TETONOR_KEY_UNAVAILABLE,
+    .left      = TEST_LEFT_KEY,
+    .right     = TEST_RIGHT_KEY,
+    .backspace = TEST_BACKSPACE_KEY,
+    .pad_zero  = TETONOR_KEY_UNAVAILABLE,
+    .up        = TEST_UP_KEY,
+    .down      = TEST_DOWN_KEY,
+    .pad_plus  = TETONOR_KEY_UNAVAILABLE,
+    .pad_star  = TETONOR_KEY_UNAVAILABLE};
 
 static const BoardKeyCodes vertical_unavailable_codes = {
-    TEST_ENTER_KEY,          TEST_PAD_ENTER_KEY,     TEST_LEFT_KEY,
-    TEST_RIGHT_KEY,          TEST_BACKSPACE_KEY,     TEST_PAD_ZERO_KEY,
-    TETONOR_KEY_UNAVAILABLE, TETONOR_KEY_UNAVAILABLE};
+    .enter     = TEST_ENTER_KEY,
+    .pad_enter = TEST_PAD_ENTER_KEY,
+    .left      = TEST_LEFT_KEY,
+    .right     = TEST_RIGHT_KEY,
+    .backspace = TEST_BACKSPACE_KEY,
+    .pad_zero  = TEST_PAD_ZERO_KEY,
+    .up        = TETONOR_KEY_UNAVAILABLE,
+    .down      = TETONOR_KEY_UNAVAILABLE,
+    .pad_plus  = TEST_PAD_PLUS_KEY,
+    .pad_star  = TEST_PAD_STAR_KEY};
 
 #define ASSERT_INPUT_COMMAND(key, codes, expected_kind)                        \
     do                                                                         \
@@ -79,6 +103,8 @@ static const BoardKeyCodes vertical_unavailable_codes = {
             board_command_from_key((key), &(codes));                           \
         ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_INPUT);           \
         ASSERT_EQ_INT(command_under_test.input.kind, (expected_kind));         \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
     } while (0)
 
 #define ASSERT_DIGIT_COMMAND(key, codes, expected_digit)                       \
@@ -89,6 +115,19 @@ static const BoardKeyCodes vertical_unavailable_codes = {
         ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_INPUT);           \
         ASSERT_EQ_INT(command_under_test.input.kind, BOARD_INPUT_DIGIT);       \
         ASSERT_EQ_INT(command_under_test.input.digit, (expected_digit));       \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
+    } while (0)
+
+#define ASSERT_OPERATION_COMMAND(key, codes, expected_operation)               \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_INPUT);           \
+        ASSERT_EQ_INT(command_under_test.input.kind, BOARD_INPUT_OPERATION);   \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      (expected_operation));                                   \
     } while (0)
 
 #define ASSERT_NO_COMMAND(key, codes)                                          \
@@ -99,6 +138,8 @@ static const BoardKeyCodes vertical_unavailable_codes = {
         ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_NONE);            \
         ASSERT_EQ_INT(command_under_test.input.kind, 0);                       \
         ASSERT_EQ_INT(command_under_test.input.digit, 0);                      \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
     } while (0)
 
 static void test_board_command_from_key_escape_exits(void)
@@ -108,6 +149,7 @@ static void test_board_command_from_key_escape_exits(void)
     ASSERT_EQ_INT(command.kind, BOARD_COMMAND_EXIT);
     ASSERT_EQ_INT(command.input.kind, 0);
     ASSERT_EQ_INT(command.input.digit, 0);
+    ASSERT_EQ_INT(command.input.operation, GROUP_OPERATION_NONE);
     command = board_command_from_key(TEST_ESCAPE_LITERAL, &test_codes);
     ASSERT_EQ_INT(command.kind, BOARD_COMMAND_EXIT);
 }
@@ -168,6 +210,47 @@ static void test_board_command_from_key_space_activates(void)
                          BOARD_INPUT_ACTIVATE);
 }
 
+static void test_board_command_from_key_plus_adds(void)
+{
+    ASSERT_OPERATION_COMMAND('+', test_codes, GROUP_OPERATION_ADD);
+}
+
+static void test_board_command_from_key_keypad_plus_adds(void)
+{
+    ASSERT_OPERATION_COMMAND(TEST_PAD_PLUS_KEY, test_codes,
+                             GROUP_OPERATION_ADD);
+}
+
+static void test_board_command_from_key_multiplication_keys_multiply(void)
+{
+    ASSERT_OPERATION_COMMAND('x', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('X', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('*', test_codes, GROUP_OPERATION_MULTIPLY);
+}
+
+static void test_board_command_from_key_keypad_star_multiplies(void)
+{
+    ASSERT_OPERATION_COMMAND(TEST_PAD_STAR_KEY, test_codes,
+                             GROUP_OPERATION_MULTIPLY);
+}
+
+static void test_board_command_from_key_operation_characters_ignore_codes(void)
+{
+    ASSERT_OPERATION_COMMAND('+', unavailable_codes, GROUP_OPERATION_ADD);
+    ASSERT_OPERATION_COMMAND('x', unavailable_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('X', unavailable_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('*', unavailable_codes, GROUP_OPERATION_MULTIPLY);
+}
+
+static void test_board_command_from_key_other_operators_are_ignored(void)
+{
+    const int keys[] = {'-', '/', '=', 'y', 'Y', 'p', '%', '^', 'v'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_NO_COMMAND(keys[i], test_codes);
+    }
+}
+
 static void test_board_command_from_key_digit_range_neighbours_are_ignored(void)
 {
     ASSERT_NO_COMMAND('/', test_codes);
@@ -194,6 +277,8 @@ static void test_board_command_from_key_unavailable_codes_never_match(void)
     ASSERT_NO_COMMAND(TETONOR_KEY_UNAVAILABLE, unavailable_codes);
     ASSERT_NO_COMMAND(TEST_PAD_ENTER_KEY, unavailable_codes);
     ASSERT_NO_COMMAND(TEST_PAD_ZERO_KEY, unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_PAD_PLUS_KEY, unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_PAD_STAR_KEY, unavailable_codes);
 }
 
 static void
@@ -206,6 +291,10 @@ test_board_command_from_key_unavailable_vertical_codes_never_match(void)
                          BOARD_INPUT_MOVE_LEFT);
     ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, vertical_unavailable_codes,
                          BOARD_INPUT_ACTIVATE);
+    ASSERT_OPERATION_COMMAND(TEST_PAD_PLUS_KEY, vertical_unavailable_codes,
+                             GROUP_OPERATION_ADD);
+    ASSERT_OPERATION_COMMAND(TEST_PAD_STAR_KEY, vertical_unavailable_codes,
+                             GROUP_OPERATION_MULTIPLY);
 }
 
 static void test_board_command_from_key_available_codes_still_work(void)
@@ -241,6 +330,12 @@ int main(void)
     RUN_TEST(test_board_command_from_key_enter_variants_activate);
     RUN_TEST(test_board_command_from_key_backspace_variants_delete);
     RUN_TEST(test_board_command_from_key_space_activates);
+    RUN_TEST(test_board_command_from_key_plus_adds);
+    RUN_TEST(test_board_command_from_key_keypad_plus_adds);
+    RUN_TEST(test_board_command_from_key_multiplication_keys_multiply);
+    RUN_TEST(test_board_command_from_key_keypad_star_multiplies);
+    RUN_TEST(test_board_command_from_key_operation_characters_ignore_codes);
+    RUN_TEST(test_board_command_from_key_other_operators_are_ignored);
     RUN_TEST(test_board_command_from_key_digit_range_neighbours_are_ignored);
     RUN_TEST(test_board_command_from_key_unrelated_keys_are_ignored);
     RUN_TEST(test_board_command_from_key_unavailable_codes_never_match);

@@ -62,6 +62,16 @@ static BoardKeyCodes board_key_codes(void)
 #else
     key_codes.pad_zero = TETONOR_KEY_UNAVAILABLE;
 #endif
+#ifdef PADPLUS
+    key_codes.pad_plus = PADPLUS;
+#else
+    key_codes.pad_plus = TETONOR_KEY_UNAVAILABLE;
+#endif
+#ifdef PADSTAR
+    key_codes.pad_star = PADSTAR;
+#else
+    key_codes.pad_star = TETONOR_KEY_UNAVAILABLE;
+#endif
     return key_codes;
 }
 

@@ -4,9 +4,9 @@
 #include <stdbool.h>
 
 #include "number_generation.h"
+#include "operand_group.h"
 
-#define TETONOR_EMPTY_ENTRY (-1) /* editable slot with nothing typed */
-#define TETONOR_NO_CURSOR (-1)   /* board has no editable slot */
+#define TETONOR_NO_CURSOR (-1) /* board has no editable slot */
 #define TETONOR_DIGIT_BASE 10
 
 typedef enum
@@ -24,19 +24,22 @@ typedef enum
     BOARD_INPUT_MOVE_DOWN,
     BOARD_INPUT_DIGIT,
     BOARD_INPUT_DELETE,
-    BOARD_INPUT_ACTIVATE /* acts on the focused element */
+    BOARD_INPUT_ACTIVATE, /* acts on the focused element */
+    BOARD_INPUT_OPERATION /* sets the focused operation box */
 } BoardInputKind;
 
 typedef struct
 {
     BoardInputKind kind;
-    int digit; /* 0-9, used only by BOARD_INPUT_DIGIT */
+    int digit;                /* 0-9, used only by BOARD_INPUT_DIGIT */
+    GroupOperation operation; /* used only by BOARD_INPUT_OPERATION */
 } BoardInput;
 
 typedef enum
 {
-    BOARD_FOCUS_SLOT,  /* the slot at cursor */
-    BOARD_FOCUS_SUBMIT /* the control that submits the whole answer */
+    BOARD_FOCUS_SLOT,   /* the slot at cursor */
+    BOARD_FOCUS_SUBMIT, /* the control that submits the whole answer */
+    BOARD_FOCUS_GROUP   /* field group_field of groups[group_cursor] */
 } BoardFocus;
 
 typedef struct
@@ -49,8 +52,11 @@ typedef struct
 {
     const NumberGeneration* puzzle; /* borrowed; must outlive the board */
     BoardSlot slots[TETONOR_CELL_COUNT];
-    int cursor; /* editable slot index, or TETONOR_NO_CURSOR; kept while focus
-                   is BOARD_FOCUS_SUBMIT */
+    OperandGroup groups[TETONOR_CELL_COUNT]; /* row-major cell index */
+    int cursor; /* editable slot index, or TETONOR_NO_CURSOR; remembered while
+                   focus is elsewhere */
+    int group_cursor; /* cell index; remembered while focus is elsewhere */
+    GroupField group_field; /* remembered while focus is elsewhere */
     BoardFocus focus;
     BoardResult result;
 } Board;
@@ -59,8 +65,9 @@ typedef struct
  * fixed-size value, so there is no matching release function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
 
-/* Applies one player input. Slot focus edits and moves; ACTIVATE on the submit
- * control judges the whole answer once every editable slot is filled. */
+/* Applies one player input. Slot and group focus edit and move; ACTIVATE on
+ * the submit control judges the whole answer once every editable slot and
+ * every group box is filled. */
 void apply_board_input(Board* board, BoardInput input);
 
 #endif

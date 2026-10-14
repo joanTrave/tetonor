@@ -12,9 +12,13 @@ enum
     TETONOR_KEY_RETURN    = '\r',
     TETONOR_KEY_BACKSPACE = '\b',
     TETONOR_KEY_DELETE    = 127, /* DEL, sent as backspace by many terminals */
-    TETONOR_KEY_DIGIT_FIRST = '0',
-    TETONOR_KEY_DIGIT_LAST  = '9',
-    TETONOR_KEY_UNAVAILABLE = -2 /* never returned by getch(); absent code */
+    TETONOR_KEY_DIGIT_FIRST    = '0',
+    TETONOR_KEY_DIGIT_LAST     = '9',
+    TETONOR_KEY_PLUS           = '+',
+    TETONOR_KEY_MULTIPLY       = 'x',
+    TETONOR_KEY_MULTIPLY_UPPER = 'X',
+    TETONOR_KEY_STAR           = '*',
+    TETONOR_KEY_UNAVAILABLE    = -2 /* never returned by getch(); absent code */
 };
 
 /* Curses key codes the board needs, passed in so this module stays free of
@@ -29,6 +33,8 @@ typedef struct
     int pad_zero;  /* PDCurses PAD0 */
     int up;        /* KEY_UP */
     int down;      /* KEY_DOWN */
+    int pad_plus;  /* PDCurses PADPLUS */
+    int pad_star;  /* PDCurses PADSTAR */
 } BoardKeyCodes;
 
 typedef enum
