@@ -40,11 +40,20 @@ LayoutPoint layout_available_cell_origin(int index)
     return origin;
 }
 
+LayoutPoint layout_confirm_button_origin(void)
+{
+    LayoutPoint origin;
+    origin.y =
+        layout_available_cell_origin(0).y + LAYOUT_MINI_H + LAYOUT_BUTTON_GAP;
+    origin.x = LAYOUT_ORIGIN_X;
+    return origin;
+}
+
 LayoutPoint layout_result_message_origin(void)
 {
     LayoutPoint origin;
     origin.y =
-        layout_available_cell_origin(0).y + LAYOUT_MINI_H + LAYOUT_MESSAGE_GAP;
+        layout_confirm_button_origin().y + LAYOUT_BUTTON_H + LAYOUT_MESSAGE_GAP;
     origin.x = LAYOUT_ORIGIN_X;
     return origin;
 }

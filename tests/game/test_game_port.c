@@ -89,7 +89,9 @@ static void press_through_port(const GamePort* game_port, Board* board,
 }
 
 /* Types every hidden slot's solution value, adding first_slot_offset to the
- * first one (modulo the value range) to make the answer wrong on demand. */
+ * first one (modulo the value range) to make the answer wrong on demand. The
+ * RIGHT after the last slot focuses the submit control, which ACTIVATE then
+ * presses. */
 static void play_session(const GamePort* game_port, Board* board,
                          const NumberGeneration* puzzle, int first_slot_offset)
 {
@@ -112,9 +114,9 @@ static void play_session(const GamePort* game_port, Board* board,
                                      value / TETONOR_DIGIT_BASE);
         }
         press_digit_through_port(game_port, board, value % TETONOR_DIGIT_BASE);
-        press_through_port(game_port, board, BOARD_INPUT_CONFIRM);
         press_through_port(game_port, board, BOARD_INPUT_MOVE_RIGHT);
     }
+    press_through_port(game_port, board, BOARD_INPUT_ACTIVATE);
 }
 
 static void test_create_game_port_wires_board_functions(void)

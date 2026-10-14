@@ -41,10 +41,11 @@ void init_styles(void)
 
 attr_t text_style_attr(TextStyle style)
 {
-    attr_t emphasis = style == TEXT_STYLE_ENTERED ? A_NORMAL : A_BOLD;
     if (colour_pairs_available())
     {
-        return COLOR_PAIR(style + TETONOR_FIRST_COLOR_PAIR) | emphasis;
+        /* No A_BOLD here: some Windows backends turn bold into an intensity
+         * change that alters the hue, so the pair alone carries the colour. */
+        return COLOR_PAIR(style + TETONOR_FIRST_COLOR_PAIR);
     }
-    return style == TEXT_STYLE_ENTERED ? (A_DIM | A_UNDERLINE) : emphasis;
+    return style == TEXT_STYLE_ENTERED ? (A_DIM | A_UNDERLINE) : A_BOLD;
 }
