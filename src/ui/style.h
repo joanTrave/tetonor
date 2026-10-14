@@ -3,21 +3,19 @@
 
 #include <curses.h>
 
-typedef enum
-{
-    TEXT_STYLE_ENTERED, /* player-written numbers */
-    TEXT_STYLE_CORRECT,
-    TEXT_STYLE_WRONG,
-    TEXT_STYLE_COUNT
-} TextStyle;
+#include "../game/game_port.h"
 
-/* Defines the colour pairs when the terminal supports colour. Call once,
- * after initscr; curses releases colour state in endwin, so there is no
- * matching release function. */
+/* Starts colour support when the terminal has it. Call once, after initscr;
+ * curses releases colour state in endwin, so there is no matching release
+ * function. */
 void init_styles(void);
 
-/* Curses attributes for style: colour when available, otherwise a
- * monochrome fallback. */
-attr_t text_style_attr(TextStyle style);
+/* Defines one colour pair per palette role. Call once per play session, after
+ * init_styles and before the first draw. */
+void apply_palette_styles(const Palette* palette);
+
+/* Curses attributes for role: the role's colour pair (bright for the typed
+ * used roles) when colour is available, otherwise a monochrome fallback. */
+attr_t palette_role_attr(PaletteRole role);
 
 #endif

@@ -23,6 +23,8 @@ static bool all_editable_filled(const Board* board);
 static bool all_groups_filled(const Board* board);
 static void submit_answer(Board* board);
 static void judge_board(Board* board);
+static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
+static void refresh_slot_usages(Board* board);
 
 void init_board(Board* board, const NumberGeneration* puzzle)
 {
@@ -41,6 +43,8 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     board->cursor = find_editable_slot(board, 0, 1);
     board->focus  = board->cursor != TETONOR_NO_CURSOR ? BOARD_FOCUS_SLOT
                                                        : BOARD_FOCUS_GROUP;
+    init_palette(&board->palette);
+    refresh_slot_usages(board);
 }
 
 void apply_board_input(Board* board, BoardInput input)
@@ -57,6 +61,7 @@ void apply_board_input(Board* board, BoardInput input)
             apply_submit_input(board, input);
             break;
     }
+    refresh_slot_usages(board);
 }
 
 static void apply_slot_input(Board* board, BoardInput input)
@@ -341,14 +346,27 @@ static void submit_answer(Board* board)
     }
 }
 
-static void judge_board(Board* board)
+/* The available row as the player sees it: given numbers plus typed ones. */
+static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT])
 {
-    int strip[TETONOR_CELL_COUNT];
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
         strip[i] = board->slots[i].editable ? board->slots[i].value
                                             : board->puzzle->available_array[i];
     }
+}
+
+static void refresh_slot_usages(Board* board)
+{
+    int strip[TETONOR_CELL_COUNT];
+    build_strip(board, strip);
+    compute_slot_usages(strip, board->groups, board->slot_usages);
+}
+
+static void judge_board(Board* board)
+{
+    int strip[TETONOR_CELL_COUNT];
+    build_strip(board, strip);
     board->result = is_answer_correct(board->puzzle, strip, board->groups)
                         ? BOARD_RESULT_CORRECT
                         : BOARD_RESULT_WRONG;

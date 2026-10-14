@@ -5,6 +5,8 @@
 
 #include "number_generation.h"
 #include "operand_group.h"
+#include "palette.h"
+#include "slot_usage.h"
 
 #define TETONOR_NO_CURSOR (-1) /* board has no editable slot */
 #define TETONOR_DIGIT_BASE 10
@@ -59,15 +61,19 @@ typedef struct
     GroupField group_field; /* remembered while focus is elsewhere */
     BoardFocus focus;
     BoardResult result;
+    SlotUsage slot_usages[TETONOR_CELL_COUNT]; /* derived from the strip and
+                                                  the groups */
+    Palette palette; /* every colour of the game; the only instance */
 } Board;
 
-/* Starts a fresh entry session over puzzle. Acquires nothing: Board is a
- * fixed-size value, so there is no matching release function. */
+/* Starts a fresh entry session over puzzle. Also fills the default palette and
+ * the slot usages. Acquires nothing: Board is a fixed-size value, so there is
+ * no matching release function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
 
 /* Applies one player input. Slot and group focus edit and move; ACTIVATE on
  * the submit control judges the whole answer once every editable slot and
- * every group box is filled. */
+ * every group box is filled. Recomputes slot_usages after every input. */
 void apply_board_input(Board* board, BoardInput input);
 
 #endif

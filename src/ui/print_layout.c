@@ -4,6 +4,7 @@
 
 #include "print_layout.h"
 #include "layout.h"
+#include "palette_style.h"
 #include "style.h"
 
 #define NUMBER_BUFFER_SIZE 8
@@ -128,13 +129,8 @@ static void draw_focus_bar(int y, int x, int width, attr_t attrs)
     attr_off(attrs, NULL);
 }
 
-static void draw_entered_number(int y, int x, int w, int value, bool focused)
+static void draw_styled_number(int y, int x, int w, int value, attr_t attrs)
 {
-    attr_t attrs = text_style_attr(TEXT_STYLE_ENTERED);
-    if (focused)
-    {
-        attrs |= A_REVERSE;
-    }
     attr_on(attrs, NULL);
     draw_centered_number(y, x, w, value);
     attr_off(attrs, NULL);
@@ -168,7 +164,7 @@ static void draw_group_field(const Board* board, int cell, GroupField field)
     LayoutPoint origin        = layout_group_field_origin(row, col, field);
     int width                 = layout_group_field_width(field);
     bool focused              = is_group_focused(board, cell, field);
-    attr_t attrs              = text_style_attr(TEXT_STYLE_ENTERED);
+    attr_t attrs              = palette_role_attr(PALETTE_ROLE_ENTERED);
     int number = field == GROUP_FIELD_SMALLER ? group->smaller : group->greater;
 
     if (focused)
@@ -247,22 +243,29 @@ static void print_available_slot(const Board* board, int index)
 
     draw_box(origin.y, origin.x, LAYOUT_MINI_H, LAYOUT_MINI_W);
 
-    if (!slot->editable)
-    {
-        draw_centered_number(origin.y + 1, origin.x, LAYOUT_MINI_W,
-                             board->puzzle->available_array[index]);
-        return;
-    }
-    bool focused = board->focus == BOARD_FOCUS_SLOT && index == board->cursor;
+    bool focused = slot->editable && board->focus == BOARD_FOCUS_SLOT &&
+                   index == board->cursor;
     if (focused)
     {
         draw_focus_bar(origin.y + 1, origin.x + 1, inner_w, A_REVERSE);
     }
-    if (slot->value != TETONOR_EMPTY_ENTRY)
+    int value =
+        slot->editable ? slot->value : board->puzzle->available_array[index];
+    if (value == TETONOR_EMPTY_ENTRY)
     {
-        draw_entered_number(origin.y + 1, origin.x, LAYOUT_MINI_W, slot->value,
-                            focused);
+        return;
     }
+    PaletteRole role = PALETTE_ROLE_ENTERED;
+    attr_t attrs     = A_NORMAL;
+    if (strip_slot_role(slot->editable, board->slot_usages[index], &role))
+    {
+        attrs = palette_role_attr(role);
+    }
+    if (focused)
+    {
+        attrs |= A_REVERSE;
+    }
+    draw_styled_number(origin.y + 1, origin.x, LAYOUT_MINI_W, value, attrs);
 }
 
 static void print_available_array(const Board* board)
@@ -306,7 +309,7 @@ static void print_result(const Board* board)
     }
     bool correct = board->result == BOARD_RESULT_CORRECT;
     attr_t attrs =
-        text_style_attr(correct ? TEXT_STYLE_CORRECT : TEXT_STYLE_WRONG);
+        palette_role_attr(correct ? PALETTE_ROLE_CORRECT : PALETTE_ROLE_WRONG);
     LayoutPoint origin = layout_result_message_origin();
     attr_on(attrs, NULL);
     mvprintw(origin.y, origin.x, "%s",
