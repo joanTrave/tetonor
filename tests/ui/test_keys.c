@@ -52,16 +52,25 @@ static void test_menu_result_from_key_unknown_key_is_ignored(void)
 #define TEST_RIGHT_KEY 0x105
 #define TEST_BACKSPACE_KEY 0x107
 #define TEST_PAD_ZERO_KEY 0x1fa
+#define TEST_UP_KEY 0x103
+#define TEST_DOWN_KEY 0x102
+#define TEST_HOME_KEY 0x106
+#define TEST_PAGE_DOWN_KEY 0x152
 #define TEST_RESIZE_KEY 0x19a
 #define TEST_ERR_KEY (-1)
 
-static const BoardKeyCodes test_codes = {TEST_ENTER_KEY,     TEST_PAD_ENTER_KEY,
-                                         TEST_LEFT_KEY,      TEST_RIGHT_KEY,
-                                         TEST_BACKSPACE_KEY, TEST_PAD_ZERO_KEY};
+static const BoardKeyCodes test_codes = {
+    TEST_ENTER_KEY,     TEST_PAD_ENTER_KEY, TEST_LEFT_KEY, TEST_RIGHT_KEY,
+    TEST_BACKSPACE_KEY, TEST_PAD_ZERO_KEY,  TEST_UP_KEY,   TEST_DOWN_KEY};
 
 static const BoardKeyCodes unavailable_codes = {
-    TEST_ENTER_KEY, TETONOR_KEY_UNAVAILABLE, TEST_LEFT_KEY,
-    TEST_RIGHT_KEY, TEST_BACKSPACE_KEY,      TETONOR_KEY_UNAVAILABLE};
+    TEST_ENTER_KEY,     TETONOR_KEY_UNAVAILABLE, TEST_LEFT_KEY, TEST_RIGHT_KEY,
+    TEST_BACKSPACE_KEY, TETONOR_KEY_UNAVAILABLE, TEST_UP_KEY,   TEST_DOWN_KEY};
+
+static const BoardKeyCodes vertical_unavailable_codes = {
+    TEST_ENTER_KEY,          TEST_PAD_ENTER_KEY,     TEST_LEFT_KEY,
+    TEST_RIGHT_KEY,          TEST_BACKSPACE_KEY,     TEST_PAD_ZERO_KEY,
+    TETONOR_KEY_UNAVAILABLE, TETONOR_KEY_UNAVAILABLE};
 
 #define ASSERT_INPUT_COMMAND(key, codes, expected_kind)                        \
     do                                                                         \
@@ -130,12 +139,18 @@ static void test_board_command_from_key_numpad_zero_types_zero(void)
     ASSERT_DIGIT_COMMAND(TEST_PAD_ZERO_KEY, test_codes, 0);
 }
 
-static void test_board_command_from_key_enter_variants_confirm(void)
+static void test_board_command_from_key_arrows_move_focus_vertically(void)
 {
-    ASSERT_INPUT_COMMAND('\n', test_codes, BOARD_INPUT_CONFIRM);
-    ASSERT_INPUT_COMMAND('\r', test_codes, BOARD_INPUT_CONFIRM);
-    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_CONFIRM);
-    ASSERT_INPUT_COMMAND(TEST_PAD_ENTER_KEY, test_codes, BOARD_INPUT_CONFIRM);
+    ASSERT_INPUT_COMMAND(TEST_UP_KEY, test_codes, BOARD_INPUT_MOVE_UP);
+    ASSERT_INPUT_COMMAND(TEST_DOWN_KEY, test_codes, BOARD_INPUT_MOVE_DOWN);
+}
+
+static void test_board_command_from_key_enter_variants_activate(void)
+{
+    ASSERT_INPUT_COMMAND('\n', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND('\r', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_PAD_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
 }
 
 static void test_board_command_from_key_backspace_variants_delete(void)
@@ -146,9 +161,11 @@ static void test_board_command_from_key_backspace_variants_delete(void)
     ASSERT_INPUT_COMMAND(TEST_BACKSPACE_KEY, test_codes, BOARD_INPUT_DELETE);
 }
 
-static void test_board_command_from_key_space_is_not_a_board_key(void)
+static void test_board_command_from_key_space_activates(void)
 {
-    ASSERT_NO_COMMAND(' ', test_codes);
+    ASSERT_INPUT_COMMAND(' ', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TETONOR_KEY_SPACE, unavailable_codes,
+                         BOARD_INPUT_ACTIVATE);
 }
 
 static void test_board_command_from_key_digit_range_neighbours_are_ignored(void)
@@ -159,8 +176,13 @@ static void test_board_command_from_key_digit_range_neighbours_are_ignored(void)
 
 static void test_board_command_from_key_unrelated_keys_are_ignored(void)
 {
-    const int keys[] = {'a',   'z',  0, TEST_ERR_KEY, TEST_RESIZE_KEY,
-                        0x103, 0x102};
+    const int keys[] = {'a',
+                        'z',
+                        0,
+                        TEST_ERR_KEY,
+                        TEST_RESIZE_KEY,
+                        TEST_HOME_KEY,
+                        TEST_PAGE_DOWN_KEY};
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
     {
         ASSERT_NO_COMMAND(keys[i], test_codes);
@@ -174,10 +196,25 @@ static void test_board_command_from_key_unavailable_codes_never_match(void)
     ASSERT_NO_COMMAND(TEST_PAD_ZERO_KEY, unavailable_codes);
 }
 
+static void
+test_board_command_from_key_unavailable_vertical_codes_never_match(void)
+{
+    ASSERT_NO_COMMAND(TETONOR_KEY_UNAVAILABLE, vertical_unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_UP_KEY, vertical_unavailable_codes);
+    ASSERT_NO_COMMAND(TEST_DOWN_KEY, vertical_unavailable_codes);
+    ASSERT_INPUT_COMMAND(TEST_LEFT_KEY, vertical_unavailable_codes,
+                         BOARD_INPUT_MOVE_LEFT);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, vertical_unavailable_codes,
+                         BOARD_INPUT_ACTIVATE);
+}
+
 static void test_board_command_from_key_available_codes_still_work(void)
 {
     ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, unavailable_codes,
-                         BOARD_INPUT_CONFIRM);
+                         BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_UP_KEY, unavailable_codes, BOARD_INPUT_MOVE_UP);
+    ASSERT_INPUT_COMMAND(TEST_DOWN_KEY, unavailable_codes,
+                         BOARD_INPUT_MOVE_DOWN);
     ASSERT_INPUT_COMMAND(TEST_LEFT_KEY, unavailable_codes,
                          BOARD_INPUT_MOVE_LEFT);
     ASSERT_INPUT_COMMAND(TEST_RIGHT_KEY, unavailable_codes,
@@ -200,12 +237,15 @@ int main(void)
     RUN_TEST(test_board_command_from_key_main_row_digits_type_digit);
     RUN_TEST(test_board_command_from_key_every_digit_maps_to_its_value);
     RUN_TEST(test_board_command_from_key_numpad_zero_types_zero);
-    RUN_TEST(test_board_command_from_key_enter_variants_confirm);
+    RUN_TEST(test_board_command_from_key_arrows_move_focus_vertically);
+    RUN_TEST(test_board_command_from_key_enter_variants_activate);
     RUN_TEST(test_board_command_from_key_backspace_variants_delete);
-    RUN_TEST(test_board_command_from_key_space_is_not_a_board_key);
+    RUN_TEST(test_board_command_from_key_space_activates);
     RUN_TEST(test_board_command_from_key_digit_range_neighbours_are_ignored);
     RUN_TEST(test_board_command_from_key_unrelated_keys_are_ignored);
     RUN_TEST(test_board_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(
+        test_board_command_from_key_unavailable_vertical_codes_never_match);
     RUN_TEST(test_board_command_from_key_available_codes_still_work);
     return test_harness_result();
 }

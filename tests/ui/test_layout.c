@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "../test_harness.h"
 #include "../../src/ui/layout.h"
 
@@ -53,13 +55,38 @@ static void test_layout_available_cell_origin_first_and_last(void)
     ASSERT_POINT(layout_available_cell_origin(15), 16, 79);
 }
 
-static void test_layout_result_message_origin_below_available_row(void)
+static void test_layout_confirm_button_origin_below_available_row(void)
 {
-    LayoutPoint origin = layout_result_message_origin();
+    LayoutPoint origin = layout_confirm_button_origin();
     ASSERT_EQ_INT(origin.y, layout_available_cell_origin(0).y + LAYOUT_MINI_H +
-                                LAYOUT_MESSAGE_GAP);
+                                LAYOUT_BUTTON_GAP);
     ASSERT_EQ_INT(origin.x, LAYOUT_ORIGIN_X);
     ASSERT_POINT(origin, 20, 4);
+}
+
+static void test_layout_confirm_button_width_fits_label(void)
+{
+    ASSERT_EQ_INT(LAYOUT_BUTTON_W, 11);
+    ASSERT_TRUE(LAYOUT_BUTTON_W >= (int)strlen(LAYOUT_CONFIRM_LABEL) + 2);
+}
+
+static void test_layout_confirm_button_does_not_overlap_boxes_or_message(void)
+{
+    LayoutPoint button  = layout_confirm_button_origin();
+    LayoutPoint message = layout_result_message_origin();
+    int last_available_row =
+        layout_available_cell_origin(0).y + LAYOUT_MINI_H - 1;
+    ASSERT_TRUE(button.y > last_available_row);
+    ASSERT_TRUE(button.y + LAYOUT_BUTTON_H - 1 < message.y);
+}
+
+static void test_layout_result_message_origin_below_confirm_button(void)
+{
+    LayoutPoint origin = layout_result_message_origin();
+    ASSERT_EQ_INT(origin.y, layout_confirm_button_origin().y + LAYOUT_BUTTON_H +
+                                LAYOUT_MESSAGE_GAP);
+    ASSERT_EQ_INT(origin.x, LAYOUT_ORIGIN_X);
+    ASSERT_POINT(origin, 24, 4);
 }
 
 int main(void)
@@ -72,6 +99,9 @@ int main(void)
     RUN_TEST(test_layout_sum_cell_origin_first_and_last_cell);
     RUN_TEST(test_layout_available_label_origin_above_cells);
     RUN_TEST(test_layout_available_cell_origin_first_and_last);
-    RUN_TEST(test_layout_result_message_origin_below_available_row);
+    RUN_TEST(test_layout_confirm_button_origin_below_available_row);
+    RUN_TEST(test_layout_confirm_button_width_fits_label);
+    RUN_TEST(test_layout_confirm_button_does_not_overlap_boxes_or_message);
+    RUN_TEST(test_layout_result_message_origin_below_confirm_button);
     return test_harness_result();
 }

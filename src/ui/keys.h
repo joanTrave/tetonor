@@ -27,6 +27,8 @@ typedef struct
     int right;     /* KEY_RIGHT */
     int backspace; /* KEY_BACKSPACE */
     int pad_zero;  /* PDCurses PAD0 */
+    int up;        /* KEY_UP */
+    int down;      /* KEY_DOWN */
 } BoardKeyCodes;
 
 typedef enum

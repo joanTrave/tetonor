@@ -1,26 +1,29 @@
 #include "board.h"
 #include "answer_check.h"
 
+static void apply_slot_input(Board* board, BoardInput input);
+static void apply_submit_input(Board* board, BoardInput input);
 static int find_editable_slot(const Board* board, int from, int step);
-static void move_cursor(Board* board, int step);
+static bool move_cursor(Board* board, int step);
+static void focus_submit(Board* board);
 static void type_digit(Board* board, int digit);
 static void delete_digit(Board* board);
-static void confirm_slot(Board* board);
-static void reopen_slot(Board* board, BoardSlot* slot);
-static bool all_editable_confirmed(const Board* board);
+static void clear_result(Board* board);
+static bool all_editable_filled(const Board* board);
+static void submit_answer(Board* board);
 static void judge_board(Board* board);
 
 void init_board(Board* board, const NumberGeneration* puzzle)
 {
     board->puzzle = puzzle;
     board->cursor = TETONOR_NO_CURSOR;
+    board->focus  = BOARD_FOCUS_SLOT;
     board->result = BOARD_RESULT_PENDING;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
         BoardSlot* slot = &board->slots[i];
         slot->editable  = puzzle->available_array[i] == TETONOR_HIDDEN_NUMBER;
         slot->value     = TETONOR_EMPTY_ENTRY;
-        slot->confirmed = false;
     }
     board->cursor = find_editable_slot(board, 0, 1);
 }
@@ -31,13 +34,29 @@ void apply_board_input(Board* board, BoardInput input)
     {
         return;
     }
+    if (board->focus == BOARD_FOCUS_SUBMIT)
+    {
+        apply_submit_input(board, input);
+        return;
+    }
+    apply_slot_input(board, input);
+}
+
+static void apply_slot_input(Board* board, BoardInput input)
+{
     switch (input.kind)
     {
         case BOARD_INPUT_MOVE_LEFT:
             move_cursor(board, -1);
             break;
         case BOARD_INPUT_MOVE_RIGHT:
-            move_cursor(board, 1);
+            if (!move_cursor(board, 1))
+            {
+                focus_submit(board);
+            }
+            break;
+        case BOARD_INPUT_MOVE_DOWN:
+            focus_submit(board);
             break;
         case BOARD_INPUT_DIGIT:
             type_digit(board, input.digit);
@@ -45,8 +64,27 @@ void apply_board_input(Board* board, BoardInput input)
         case BOARD_INPUT_DELETE:
             delete_digit(board);
             break;
-        case BOARD_INPUT_CONFIRM:
-            confirm_slot(board);
+        case BOARD_INPUT_MOVE_UP:
+        case BOARD_INPUT_ACTIVATE:
+            break;
+    }
+}
+
+static void apply_submit_input(Board* board, BoardInput input)
+{
+    switch (input.kind)
+    {
+        case BOARD_INPUT_MOVE_UP:
+        case BOARD_INPUT_MOVE_LEFT:
+            board->focus = BOARD_FOCUS_SLOT;
+            break;
+        case BOARD_INPUT_ACTIVATE:
+            submit_answer(board);
+            break;
+        case BOARD_INPUT_MOVE_RIGHT:
+        case BOARD_INPUT_MOVE_DOWN:
+        case BOARD_INPUT_DIGIT:
+        case BOARD_INPUT_DELETE:
             break;
     }
 }
@@ -65,19 +103,26 @@ static int find_editable_slot(const Board* board, int from, int step)
     return TETONOR_NO_CURSOR;
 }
 
-static void move_cursor(Board* board, int step)
+/* Returns whether the cursor moved. */
+static bool move_cursor(Board* board, int step)
 {
     int target = find_editable_slot(board, board->cursor + step, step);
-    if (target != TETONOR_NO_CURSOR)
+    if (target == TETONOR_NO_CURSOR)
     {
-        board->cursor = target;
+        return false;
     }
+    board->cursor = target;
+    return true;
 }
 
-static void reopen_slot(Board* board, BoardSlot* slot)
+static void focus_submit(Board* board)
 {
-    slot->confirmed = false;
-    board->result   = BOARD_RESULT_PENDING;
+    board->focus = BOARD_FOCUS_SUBMIT;
+}
+
+static void clear_result(Board* board)
+{
+    board->result = BOARD_RESULT_PENDING;
 }
 
 static void type_digit(Board* board, int digit)
@@ -87,9 +132,9 @@ static void type_digit(Board* board, int digit)
         return;
     }
     BoardSlot* slot = &board->slots[board->cursor];
-    if (slot->confirmed)
+    if (board->result != BOARD_RESULT_PENDING)
     {
-        reopen_slot(board, slot);
+        clear_result(board);
         slot->value = digit;
         return;
     }
@@ -108,10 +153,7 @@ static void type_digit(Board* board, int digit)
 static void delete_digit(Board* board)
 {
     BoardSlot* slot = &board->slots[board->cursor];
-    if (slot->confirmed)
-    {
-        reopen_slot(board, slot);
-    }
+    clear_result(board);
     if (slot->value == TETONOR_EMPTY_ENTRY)
     {
         return;
@@ -121,30 +163,25 @@ static void delete_digit(Board* board)
                       : slot->value / TETONOR_DIGIT_BASE;
 }
 
-static void confirm_slot(Board* board)
-{
-    BoardSlot* slot = &board->slots[board->cursor];
-    if (slot->value == TETONOR_EMPTY_ENTRY || slot->confirmed)
-    {
-        return;
-    }
-    slot->confirmed = true;
-    if (all_editable_confirmed(board))
-    {
-        judge_board(board);
-    }
-}
-
-static bool all_editable_confirmed(const Board* board)
+static bool all_editable_filled(const Board* board)
 {
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
-        if (board->slots[i].editable && !board->slots[i].confirmed)
+        if (board->slots[i].editable &&
+            board->slots[i].value == TETONOR_EMPTY_ENTRY)
         {
             return false;
         }
     }
     return true;
+}
+
+static void submit_answer(Board* board)
+{
+    if (all_editable_filled(board))
+    {
+        judge_board(board);
+    }
 }
 
 static void judge_board(Board* board)

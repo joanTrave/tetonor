@@ -58,11 +58,19 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     {
         return input_command(BOARD_INPUT_MOVE_RIGHT, 0);
     }
+    if (key_matches(key, key_codes->up))
+    {
+        return input_command(BOARD_INPUT_MOVE_UP, 0);
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return input_command(BOARD_INPUT_MOVE_DOWN, 0);
+    }
     if (key == TETONOR_KEY_NEWLINE || key == TETONOR_KEY_RETURN ||
-        key_matches(key, key_codes->enter) ||
+        key == TETONOR_KEY_SPACE || key_matches(key, key_codes->enter) ||
         key_matches(key, key_codes->pad_enter))
     {
-        return input_command(BOARD_INPUT_CONFIRM, 0);
+        return input_command(BOARD_INPUT_ACTIVATE, 0);
     }
     if (key == TETONOR_KEY_BACKSPACE || key == TETONOR_KEY_DELETE ||
         key_matches(key, key_codes->backspace))

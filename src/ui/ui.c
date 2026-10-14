@@ -50,6 +50,8 @@ static BoardKeyCodes board_key_codes(void)
     key_codes.left      = KEY_LEFT;
     key_codes.right     = KEY_RIGHT;
     key_codes.backspace = KEY_BACKSPACE;
+    key_codes.up        = KEY_UP;
+    key_codes.down      = KEY_DOWN;
 #ifdef PADENTER
     key_codes.pad_enter = PADENTER;
 #else

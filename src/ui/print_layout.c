@@ -13,12 +13,14 @@ static const char wrong_message[]   = "WRONG ANSWER";
 
 static void print_sum_matrix(const NumberGeneration* number_generation);
 static void print_available_array(const Board* board);
+static void print_confirm_button(const Board* board);
 static void print_result(const Board* board);
 
 void print_layout(const Board* board)
 {
     print_sum_matrix(board->puzzle);
     print_available_array(board);
+    print_confirm_button(board);
     print_result(board);
 }
 
@@ -68,13 +70,12 @@ static void print_sum_matrix(const NumberGeneration* number_generation)
     }
 }
 
-/* Reverse-video bar across the inner cells, so focus never relies on colour
- * alone. */
-static void draw_focus_bar(LayoutPoint origin)
+/* Highlighted bar across the inner cells of a box w columns wide, so focus
+ * never relies on colour alone. */
+static void draw_focus_bar(LayoutPoint origin, int w, attr_t focus)
 {
-    attr_t focus = A_REVERSE;
     attr_on(focus, NULL);
-    for (int i = 1; i < LAYOUT_MINI_W - 1; i++)
+    for (int i = 1; i < w - 1; i++)
     {
         mvaddch(origin.y + 1, origin.x + i, ' ');
     }
@@ -85,10 +86,6 @@ static void draw_entered_number(LayoutPoint origin, const BoardSlot* slot,
                                 bool focused)
 {
     attr_t attrs = text_style_attr(TEXT_STYLE_ENTERED);
-    if (!slot->confirmed)
-    {
-        attrs |= A_UNDERLINE;
-    }
     if (focused)
     {
         attrs |= A_REVERSE;
@@ -111,10 +108,10 @@ static void print_available_slot(const Board* board, int index)
                              board->puzzle->available_array[index]);
         return;
     }
-    bool focused = index == board->cursor;
+    bool focused = board->focus == BOARD_FOCUS_SLOT && index == board->cursor;
     if (focused)
     {
-        draw_focus_bar(origin);
+        draw_focus_bar(origin, LAYOUT_MINI_W, A_REVERSE);
     }
     if (slot->value != TETONOR_EMPTY_ENTRY)
     {
@@ -131,6 +128,27 @@ static void print_available_array(const Board* board)
     {
         print_available_slot(board, i);
     }
+}
+
+/* The player's way to submit the whole answer. Focus is shown by a
+ * reverse-video bar, never by colour alone. */
+static void print_confirm_button(const Board* board)
+{
+    LayoutPoint origin = layout_confirm_button_origin();
+    bool focused       = board->focus == BOARD_FOCUS_SUBMIT;
+    attr_t label_attrs = focused ? (A_REVERSE | A_BOLD) : A_NORMAL;
+
+    draw_box(origin.y, origin.x, LAYOUT_BUTTON_H, LAYOUT_BUTTON_W);
+    if (focused)
+    {
+        draw_focus_bar(origin, LAYOUT_BUTTON_W, label_attrs);
+    }
+    int label_len = (int)strlen(LAYOUT_CONFIRM_LABEL);
+    attr_on(label_attrs, NULL);
+    mvprintw(origin.y + 1,
+             origin.x + layout_centered_offset(LAYOUT_BUTTON_W, label_len),
+             "%s", LAYOUT_CONFIRM_LABEL);
+    attr_off(label_attrs, NULL);
 }
 
 static void print_result(const Board* board)
