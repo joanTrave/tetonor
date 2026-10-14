@@ -203,7 +203,9 @@ static bool boards_equal(const Board* first, const Board* second)
         return false;
     }
     return slots_equal(first, second) &&
-           groups_equal(first->groups, second->groups);
+           groups_equal(first->groups, second->groups) &&
+           memcmp(first->slot_usages, second->slot_usages,
+                  sizeof first->slot_usages) == 0;
 }
 
 /* True when the only non-empty group box is the one given. */
@@ -2182,6 +2184,464 @@ static void test_apply_board_input_never_changes_given_numbers(void)
                        sizeof fixture_groups) == 0);
 }
 
+#define TEST_GIVEN_ONE_SLOT 1
+#define TEST_GIVEN_ONE_VALUE 1
+#define TEST_GIVEN_THREE_SLOT 3
+#define TEST_UNUSED_VALUE 6
+#define TEST_TYPED_TWO_DIGIT_VALUE 29
+#define TEST_THIRD_GROUP_CELL 2
+#define TEST_FOURTH_GROUP_CELL 3
+#define TEST_GARBAGE_BYTE 0xA5
+#define TEST_INPUT_KIND_COUNT 8
+#define TEST_FOCUS_COUNT 3
+
+static const OperandGroup usage_add_group        = {1, GROUP_OPERATION_ADD, 2};
+static const OperandGroup usage_multiply_group   = {1, GROUP_OPERATION_MULTIPLY,
+                                                    2};
+static const OperandGroup usage_second_add_group = {1, GROUP_OPERATION_ADD, 3};
+static const OperandGroup usage_third_add_group  = {1, GROUP_OPERATION_ADD, 4};
+static const BoardInputKind fixture_input_kinds[TEST_INPUT_KIND_COUNT] = {
+    BOARD_INPUT_MOVE_LEFT, BOARD_INPUT_MOVE_RIGHT, BOARD_INPUT_MOVE_UP,
+    BOARD_INPUT_MOVE_DOWN, BOARD_INPUT_DIGIT,      BOARD_INPUT_DELETE,
+    BOARD_INPUT_ACTIVATE,  BOARD_INPUT_OPERATION};
+static const BoardFocus fixture_focuses[TEST_FOCUS_COUNT] = {
+    BOARD_FOCUS_SLOT, BOARD_FOCUS_SUBMIT, BOARD_FOCUS_GROUP};
+
+/* Leaves the focus on the greater box of the group. */
+static void enter_group_in_cell(Board* board, int cell,
+                                const OperandGroup* group)
+{
+    place_group_focus(board, cell, GROUP_FIELD_SMALLER);
+    enter_group_by_inputs(board, group);
+}
+
+static void focus_slot(Board* board, int slot)
+{
+    board->focus  = BOARD_FOCUS_SLOT;
+    board->cursor = slot;
+}
+
+static void set_all_usages(Board* board, SlotUsage usage)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        board->slot_usages[i] = usage;
+    }
+}
+
+static bool all_usages_are(const Board* board, SlotUsage usage)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board->slot_usages[i] != usage)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int marked_usage_count(const Board* board)
+{
+    int count = 0;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board->slot_usages[i] != SLOT_USAGE_NONE)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+static bool palette_entries_equal(const PaletteEntry* first,
+                                  const PaletteEntry* second)
+{
+    return first->color == second->color && first->fallback == second->fallback;
+}
+
+static bool palette_is_default(const Palette* palette)
+{
+    Palette expected;
+    init_palette(&expected);
+    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+    {
+        if (!palette_entries_equal(&palette->foregrounds[role],
+                                   &expected.foregrounds[role]))
+        {
+            return false;
+        }
+    }
+    return palette_entries_equal(&palette->background, &expected.background);
+}
+
+static void test_init_board_slot_usages_start_unmarked(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+}
+
+static void test_init_board_without_editable_slots_has_unmarked_usages(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+}
+
+static void test_init_board_recomputes_usages_of_a_previous_session(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    set_all_usages(&board, SLOT_USAGE_TWICE);
+    init_board(&board, &puzzle);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+}
+
+static void test_init_board_fills_the_default_palette(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    build_fixture_puzzle(&puzzle, fixture_hidden, TEST_EDITABLE_COUNT);
+    memset(&board.palette, TEST_GARBAGE_BYTE, sizeof board.palette);
+    init_board(&board, &puzzle);
+    ASSERT_TRUE(palette_is_default(&board.palette));
+}
+
+static void test_init_board_restores_the_default_palette_of_a_used_board(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    board.palette.foregrounds[PALETTE_ROLE_USED_ONCE].color =
+        PALETTE_COLOR_MAGENTA;
+    ASSERT_FALSE(palette_is_default(&board.palette));
+    init_board(&board, &puzzle);
+    ASSERT_TRUE(palette_is_default(&board.palette));
+}
+
+static void test_apply_board_input_group_entry_marks_the_strip_live(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    type_value(&board, usage_add_group.smaller);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press_operation(&board, usage_add_group.operation);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(marked_usage_count(&board), 1);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    type_value(&board, usage_add_group.greater);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void test_apply_board_input_empty_hidden_slot_is_never_marked(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+    ASSERT_EQ_INT(marked_usage_count(&board), 1);
+}
+
+static void test_apply_board_input_typing_a_used_value_marks_it_at_once(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void test_apply_board_input_typing_a_twice_used_value_marks_twice(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(marked_usage_count(&board), 2);
+}
+
+static void test_apply_board_input_deleting_a_typed_value_unmarks_it(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void
+test_apply_board_input_extending_a_typed_value_updates_the_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+    press_digit(&board, 9);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value,
+                  TEST_TYPED_TWO_DIGIT_VALUE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+}
+
+static void test_apply_board_input_typed_unused_value_stays_unmarked(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, TEST_UNUSED_VALUE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+}
+
+static void test_apply_board_input_add_and_multiply_group_mark_twice(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+}
+
+static void test_apply_board_input_second_use_of_one_operation_stays_once(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_second_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_THREE_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void test_apply_board_input_third_use_keeps_the_box_twice(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    enter_group_in_cell(&board, TEST_THIRD_GROUP_CELL, &usage_second_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+    enter_group_in_cell(&board, TEST_FOURTH_GROUP_CELL, &usage_third_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+}
+
+static void test_apply_board_input_two_adds_mark_equal_boxes_both_once(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_second_add_group);
+    enter_group_in_cell(&board, 1, &usage_third_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, TEST_GIVEN_ONE_VALUE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void test_apply_board_input_equal_boxes_split_add_and_multiply(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, TEST_GIVEN_ONE_VALUE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_NONE);
+}
+
+static void test_apply_board_input_equal_boxes_two_adds_and_a_multiply(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    enter_group_in_cell(&board, TEST_THIRD_GROUP_CELL, &usage_second_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, TEST_GIVEN_ONE_VALUE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void test_apply_board_input_clearing_an_operation_lowers_the_marks(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_multiply_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_TWICE);
+    place_group_focus(&board, 1, GROUP_FIELD_OPERATION);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+}
+
+static void
+test_apply_board_input_clearing_an_operand_box_lowers_the_marks(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, 2);
+    place_group_focus(&board, 0, GROUP_FIELD_SMALLER);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_NONE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_FIRST_SLOT], SLOT_USAGE_ONCE);
+    place_group_focus(&board, 0, GROUP_FIELD_GREATER);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+}
+
+static void test_apply_board_input_changing_an_operation_moves_the_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    enter_group_in_cell(&board, 1, &usage_add_group);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    place_group_focus(&board, 1, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_TWICE);
+}
+
+static void test_apply_board_input_changing_a_group_number_moves_the_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    enter_group_by_inputs(&board, &usage_add_group);
+    press(&board, BOARD_INPUT_DELETE);
+    press_digit(&board, usage_second_add_group.greater);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_ONE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(board.slot_usages[TEST_GIVEN_THREE_SLOT], SLOT_USAGE_ONCE);
+    ASSERT_EQ_INT(marked_usage_count(&board), 2);
+}
+
+static void test_apply_board_input_wrong_result_leaves_marks_unchanged(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    fill_slots(&board, fixture_wrong_last_values);
+    SlotUsage before[TETONOR_CELL_COUNT];
+    memcpy(before, board.slot_usages, sizeof before);
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_TRUE(memcmp(before, board.slot_usages, sizeof before) == 0);
+    ASSERT_EQ_INT(board.slot_usages[TEST_LAST_SLOT], SLOT_USAGE_NONE);
+    ASSERT_EQ_INT(board.slot_usages[0], SLOT_USAGE_TWICE);
+    ASSERT_EQ_INT(marked_usage_count(&board), TETONOR_CELL_COUNT - 1);
+}
+
+static void test_apply_board_input_correct_result_leaves_marks_unchanged(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    fill_slots(&board, fixture_hidden_values);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_TWICE));
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_TWICE));
+}
+
+static void test_apply_board_input_recomputes_marks_after_an_ignored_input(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board.slots[i].editable)
+        {
+            board.slots[i].value = fixture_strip[i];
+        }
+    }
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_TWICE));
+}
+
+static void test_apply_board_input_recomputes_marks_after_every_input(void)
+{
+    for (int f = 0; f < TEST_FOCUS_COUNT; f++)
+    {
+        for (int k = 0; k < TEST_INPUT_KIND_COUNT; k++)
+        {
+            NumberGeneration puzzle;
+            Board board;
+            start_default_board(&puzzle, &board);
+            place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+            board.focus = fixture_focuses[f];
+            set_all_usages(&board, SLOT_USAGE_TWICE);
+            BoardInput input = {.kind      = fixture_input_kinds[k],
+                                .digit     = TEST_UNUSED_VALUE,
+                                .operation = GROUP_OPERATION_ADD};
+            apply_board_input(&board, input);
+            ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+        }
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -2333,5 +2793,31 @@ int main(void)
     RUN_TEST(test_apply_board_input_editing_a_group_clears_a_wrong_result);
     RUN_TEST(test_apply_board_input_moving_cursor_keeps_result);
     RUN_TEST(test_apply_board_input_never_changes_given_numbers);
+    RUN_TEST(test_init_board_slot_usages_start_unmarked);
+    RUN_TEST(test_init_board_without_editable_slots_has_unmarked_usages);
+    RUN_TEST(test_init_board_recomputes_usages_of_a_previous_session);
+    RUN_TEST(test_init_board_fills_the_default_palette);
+    RUN_TEST(test_init_board_restores_the_default_palette_of_a_used_board);
+    RUN_TEST(test_apply_board_input_group_entry_marks_the_strip_live);
+    RUN_TEST(test_apply_board_input_empty_hidden_slot_is_never_marked);
+    RUN_TEST(test_apply_board_input_typing_a_used_value_marks_it_at_once);
+    RUN_TEST(test_apply_board_input_typing_a_twice_used_value_marks_twice);
+    RUN_TEST(test_apply_board_input_deleting_a_typed_value_unmarks_it);
+    RUN_TEST(test_apply_board_input_extending_a_typed_value_updates_the_mark);
+    RUN_TEST(test_apply_board_input_typed_unused_value_stays_unmarked);
+    RUN_TEST(test_apply_board_input_add_and_multiply_group_mark_twice);
+    RUN_TEST(test_apply_board_input_second_use_of_one_operation_stays_once);
+    RUN_TEST(test_apply_board_input_third_use_keeps_the_box_twice);
+    RUN_TEST(test_apply_board_input_two_adds_mark_equal_boxes_both_once);
+    RUN_TEST(test_apply_board_input_equal_boxes_split_add_and_multiply);
+    RUN_TEST(test_apply_board_input_equal_boxes_two_adds_and_a_multiply);
+    RUN_TEST(test_apply_board_input_clearing_an_operation_lowers_the_marks);
+    RUN_TEST(test_apply_board_input_clearing_an_operand_box_lowers_the_marks);
+    RUN_TEST(test_apply_board_input_changing_an_operation_moves_the_mark);
+    RUN_TEST(test_apply_board_input_changing_a_group_number_moves_the_mark);
+    RUN_TEST(test_apply_board_input_wrong_result_leaves_marks_unchanged);
+    RUN_TEST(test_apply_board_input_correct_result_leaves_marks_unchanged);
+    RUN_TEST(test_apply_board_input_recomputes_marks_after_an_ignored_input);
+    RUN_TEST(test_apply_board_input_recomputes_marks_after_every_input);
     return test_harness_result();
 }

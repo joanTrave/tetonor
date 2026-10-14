@@ -4,6 +4,7 @@
 #include "ui.h"
 #include "keys.h"
 #include "print_layout.h"
+#include "style.h"
 
 static BoardKeyCodes board_key_codes(void);
 static void draw_board(const Board* board);
@@ -19,6 +20,7 @@ int ui_run(const GamePort* game_port)
 
     Board board;
     game_port->init_board_f(&board, number_generation);
+    apply_palette_styles(&board.palette);
     BoardKeyCodes key_codes = board_key_codes();
     draw_board(&board);
 

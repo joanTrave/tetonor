@@ -29,7 +29,8 @@ UI_OBJ  := $(filter build/obj/src/ui/%.o,$(OBJ))
 
 # Units linked into the tests: the portable core plus the pure UI modules.
 TESTABLE_OBJ := $(patsubst %.c,build/obj/%.o,$(wildcard src/game/*.c)) \
-                build/obj/src/ui/keys.o build/obj/src/ui/layout.o
+                build/obj/src/ui/keys.o build/obj/src/ui/layout.o \
+                build/obj/src/ui/palette_style.o
 
 TEST_SRC := $(wildcard tests/*/test_*.c)
 TEST_BIN := $(TEST_SRC:tests/%.c=build/tests/%$(EXE))
