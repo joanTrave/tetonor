@@ -25,15 +25,24 @@ static BoardCommand make_board_command(BoardCommandKind kind,
                                        BoardInputKind input_kind, int digit)
 {
     BoardCommand command;
-    command.kind        = kind;
-    command.input.kind  = input_kind;
-    command.input.digit = digit;
+    command.kind            = kind;
+    command.input.kind      = input_kind;
+    command.input.digit     = digit;
+    command.input.operation = GROUP_OPERATION_NONE;
     return command;
 }
 
 static BoardCommand input_command(BoardInputKind input_kind, int digit)
 {
     return make_board_command(BOARD_COMMAND_INPUT, input_kind, digit);
+}
+
+static BoardCommand operation_command(GroupOperation operation)
+{
+    BoardCommand command =
+        make_board_command(BOARD_COMMAND_INPUT, BOARD_INPUT_OPERATION, 0);
+    command.input.operation = operation;
+    return command;
 }
 
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
@@ -65,6 +74,15 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     if (key_matches(key, key_codes->down))
     {
         return input_command(BOARD_INPUT_MOVE_DOWN, 0);
+    }
+    if (key == TETONOR_KEY_PLUS || key_matches(key, key_codes->pad_plus))
+    {
+        return operation_command(GROUP_OPERATION_ADD);
+    }
+    if (key == TETONOR_KEY_MULTIPLY || key == TETONOR_KEY_MULTIPLY_UPPER ||
+        key == TETONOR_KEY_STAR || key_matches(key, key_codes->pad_star))
+    {
+        return operation_command(GROUP_OPERATION_MULTIPLY);
     }
     if (key == TETONOR_KEY_NEWLINE || key == TETONOR_KEY_RETURN ||
         key == TETONOR_KEY_SPACE || key_matches(key, key_codes->enter) ||

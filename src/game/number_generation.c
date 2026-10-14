@@ -45,6 +45,16 @@ static void set_matrix_cell(NumberGeneration* number_generation, int cell,
     number_generation->sum_matrix[row][col] = value;
 }
 
+static void set_solution_group(NumberGeneration* number_generation, int cell,
+                               int value_1, int value_2,
+                               GroupOperation operation)
+{
+    OperandGroup* group = &number_generation->solution_groups[cell];
+    group->smaller      = value_1 < value_2 ? value_1 : value_2;
+    group->operation    = operation;
+    group->greater      = value_1 < value_2 ? value_2 : value_1;
+}
+
 static void populate_numbers(NumberGeneration* number_generation)
 {
     int positions[TETONOR_CELL_COUNT];
@@ -61,10 +71,14 @@ static void populate_numbers(NumberGeneration* number_generation)
         int value_2 = random_value();
         set_available_value(number_generation, positions[2 * i], value_1);
         set_available_value(number_generation, positions[2 * i + 1], value_2);
-        set_matrix_cell(number_generation, sum_matrix_positions[2 * i],
-                        value_1 + value_2);
-        set_matrix_cell(number_generation, sum_matrix_positions[2 * i + 1],
-                        value_1 * value_2);
+        int sum_cell     = sum_matrix_positions[2 * i];
+        int product_cell = sum_matrix_positions[2 * i + 1];
+        set_matrix_cell(number_generation, sum_cell, value_1 + value_2);
+        set_matrix_cell(number_generation, product_cell, value_1 * value_2);
+        set_solution_group(number_generation, sum_cell, value_1, value_2,
+                           GROUP_OPERATION_ADD);
+        set_solution_group(number_generation, product_cell, value_1, value_2,
+                           GROUP_OPERATION_MULTIPLY);
     }
 }
 
@@ -116,8 +130,7 @@ static void swap_ints(int* a, int* b)
 
 static int random_value(void)
 {
-    return TETONOR_MIN_VALUE +
-           rand() % (TETONOR_MAX_VALUE - TETONOR_MIN_VALUE + 1);
+    return TETONOR_MIN_VALUE + rand() % TETONOR_VALUE_COUNT;
 }
 
 static void store_solution(NumberGeneration* number_generation)

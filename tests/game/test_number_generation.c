@@ -1,9 +1,12 @@
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "../test_harness.h"
 #include "../../src/game/number_generation.h"
+#include "../../src/game/operand_group.h"
 
+#define TEST_VALUE_COUNT (TETONOR_MAX_VALUE - TETONOR_MIN_VALUE + 1)
 #define TEST_SEED 42
 #define TEST_SEED_COUNT 50
 #define TEST_DEFAULT_DIFFICULTY 1
@@ -300,6 +303,194 @@ static void test_generate_random_numbers_visible_values_match_solution(void)
     }
 }
 
+static int cell_value(const NumberGeneration* number_generation, int cell)
+{
+    return number_generation
+        ->sum_matrix[cell / TETONOR_GRID_SIZE][cell % TETONOR_GRID_SIZE];
+}
+
+static int apply_operation(const OperandGroup* group)
+{
+    return group->operation == GROUP_OPERATION_ADD
+               ? group->smaller + group->greater
+               : group->smaller * group->greater;
+}
+
+static bool
+solution_groups_decompose_their_cells(const NumberGeneration* number_generation)
+{
+    for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+    {
+        const OperandGroup* group = &number_generation->solution_groups[cell];
+        bool has_operation = group->operation == GROUP_OPERATION_ADD ||
+                             group->operation == GROUP_OPERATION_MULTIPLY;
+        if (!has_operation || !is_in_value_range(group->smaller) ||
+            !is_in_value_range(group->greater) ||
+            group->smaller > group->greater ||
+            apply_operation(group) != cell_value(number_generation, cell))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int count_operation(const NumberGeneration* number_generation,
+                           GroupOperation operation)
+{
+    int count = 0;
+    for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+    {
+        if (number_generation->solution_groups[cell].operation == operation)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
+static bool
+solution_pairs_are_balanced(const NumberGeneration* number_generation)
+{
+    int balance[TEST_VALUE_COUNT][TEST_VALUE_COUNT] = {{0}};
+    for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+    {
+        const OperandGroup* group = &number_generation->solution_groups[cell];
+        int step = group->operation == GROUP_OPERATION_ADD ? 1 : -1;
+        balance[group->smaller][group->greater] += step;
+    }
+    for (int smaller = 0; smaller < TEST_VALUE_COUNT; smaller++)
+    {
+        for (int greater = 0; greater < TEST_VALUE_COUNT; greater++)
+        {
+            if (balance[smaller][greater] != 0)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool solution_operands_are_the_solution_twice(
+    const NumberGeneration* number_generation)
+{
+    int surplus[TEST_VALUE_COUNT] = {0};
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        surplus[number_generation->solution_array[i]] += 2;
+        surplus[number_generation->solution_groups[i].smaller] -= 1;
+        surplus[number_generation->solution_groups[i].greater] -= 1;
+    }
+    for (int value = 0; value < TEST_VALUE_COUNT; value++)
+    {
+        if (surplus[value] != 0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void test_generate_random_numbers_solution_groups_decompose_cells(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        bool decomposes =
+            solution_groups_decompose_their_cells(number_generation);
+        free_number_generation(number_generation);
+        ASSERT_TRUE(decomposes);
+    }
+}
+
+static void test_generate_random_numbers_solution_groups_are_valid_groups(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        bool all_valid = true;
+        for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+        {
+            all_valid =
+                all_valid && is_operand_group_valid(
+                                 &number_generation->solution_groups[cell],
+                                 cell_value(number_generation, cell));
+        }
+        free_number_generation(number_generation);
+        ASSERT_TRUE(all_valid);
+    }
+}
+
+static void test_generate_random_numbers_adds_and_multiplies_each_pair(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        int added = count_operation(number_generation, GROUP_OPERATION_ADD);
+        int multiplied =
+            count_operation(number_generation, GROUP_OPERATION_MULTIPLY);
+        free_number_generation(number_generation);
+        ASSERT_EQ_INT(added, TETONOR_PAIR_COUNT);
+        ASSERT_EQ_INT(multiplied, TETONOR_PAIR_COUNT);
+    }
+}
+
+static void test_generate_random_numbers_solution_pairs_are_balanced(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        bool balanced = solution_pairs_are_balanced(number_generation);
+        free_number_generation(number_generation);
+        ASSERT_TRUE(balanced);
+    }
+}
+
+static void test_generate_random_numbers_operands_are_solution_twice(void)
+{
+    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    {
+        srand(seed);
+        NumberGeneration* number_generation =
+            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+        ASSERT_NOT_NULL(number_generation);
+        bool matches =
+            solution_operands_are_the_solution_twice(number_generation);
+        free_number_generation(number_generation);
+        ASSERT_TRUE(matches);
+    }
+}
+
+static void
+test_generate_random_numbers_solution_groups_independent_of_mask(void)
+{
+    const int difficulties[] = {TEST_NO_MASK_DIFFICULTY, TEST_LARGE_DIFFICULTY};
+    for (size_t d = 0; d < sizeof difficulties / sizeof difficulties[0]; d++)
+    {
+        srand(TEST_SEED);
+        NumberGeneration* number_generation =
+            generate_random_numbers(difficulties[d]);
+        ASSERT_NOT_NULL(number_generation);
+        bool decomposes =
+            solution_groups_decompose_their_cells(number_generation);
+        free_number_generation(number_generation);
+        ASSERT_TRUE(decomposes);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_generate_random_numbers_returns_non_null);
@@ -318,5 +509,11 @@ int main(void)
     RUN_TEST(test_generate_random_numbers_solution_has_no_hidden_values);
     RUN_TEST(test_generate_random_numbers_solution_sorted_and_in_range);
     RUN_TEST(test_generate_random_numbers_visible_values_match_solution);
+    RUN_TEST(test_generate_random_numbers_solution_groups_decompose_cells);
+    RUN_TEST(test_generate_random_numbers_solution_groups_are_valid_groups);
+    RUN_TEST(test_generate_random_numbers_adds_and_multiplies_each_pair);
+    RUN_TEST(test_generate_random_numbers_solution_pairs_are_balanced);
+    RUN_TEST(test_generate_random_numbers_operands_are_solution_twice);
+    RUN_TEST(test_generate_random_numbers_solution_groups_independent_of_mask);
     return test_harness_result();
 }
