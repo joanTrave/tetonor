@@ -1,11 +1,69 @@
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../test_harness.h"
+#include "fixture_puzzle.h"
 #include "../../src/game/game_port.h"
 
 #define TEST_SEED 42
 #define TEST_BOXES_PER_GROUP 3
+#define TEST_MAX_FREED 4
+#define TEST_OLD_HIDDEN_COUNT 4
+#define TEST_NEW_HIDDEN_COUNT 3
+#define TEST_TYPED_VALUE 7
+#define TEST_MESSY_GROUP_CELL 5
+
+static const int fixture_old_hidden[TEST_OLD_HIDDEN_COUNT] = {2, 5, 6, 15};
+static const int fixture_new_hidden[TEST_NEW_HIDDEN_COUNT] = {0, 7, 9};
+
+/* Fakes for the generation functions of the port. */
+static int fake_generate_calls;
+static int fake_generate_difficulty;
+static bool fake_generate_fails;
+static const int* fake_hidden;
+static size_t fake_hidden_count;
+static int fake_free_calls;
+static uintptr_t fake_freed[TEST_MAX_FREED];
+
+static void reset_fakes(void)
+{
+    fake_generate_calls      = 0;
+    fake_generate_difficulty = -1;
+    fake_generate_fails      = false;
+    fake_hidden              = fixture_old_hidden;
+    fake_hidden_count        = TEST_OLD_HIDDEN_COUNT;
+    fake_free_calls          = 0;
+    memset(fake_freed, 0, sizeof fake_freed);
+}
+
+static NumberGeneration* fake_generate(int difficulty)
+{
+    fake_generate_calls++;
+    fake_generate_difficulty = difficulty;
+    if (fake_generate_fails)
+    {
+        return NULL;
+    }
+    NumberGeneration* puzzle = malloc(sizeof *puzzle);
+    if (puzzle != NULL)
+    {
+        build_fixture_puzzle(puzzle, fake_hidden, fake_hidden_count);
+    }
+    return puzzle;
+}
+
+static void fake_free(NumberGeneration* puzzle)
+{
+    if (fake_free_calls < TEST_MAX_FREED)
+    {
+        fake_freed[fake_free_calls] = (uintptr_t)puzzle;
+    }
+    fake_free_calls++;
+    free(puzzle);
+}
 
 static int count_hidden(const NumberGeneration* number_generation)
 {
@@ -302,6 +360,403 @@ static void test_game_port_board_session_without_groups_stays_pending(void)
     ASSERT_EQ_INT(result, BOARD_RESULT_PENDING);
 }
 
+static bool palettes_match(const Palette* first, const Palette* second)
+{
+    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+    {
+        if (first->foregrounds[role].color != second->foregrounds[role].color ||
+            first->foregrounds[role].fallback !=
+                second->foregrounds[role].fallback)
+        {
+            return false;
+        }
+    }
+    return first->background.color == second->background.color &&
+           first->background.fallback == second->background.fallback;
+}
+
+/* Field by field: padding bytes of a Board are unspecified. */
+static bool boards_match(const Board* first, const Board* second)
+{
+    if (first->puzzle != second->puzzle || first->cursor != second->cursor ||
+        first->group_cursor != second->group_cursor ||
+        first->group_field != second->group_field ||
+        first->focus != second->focus || first->result != second->result)
+    {
+        return false;
+    }
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (first->slots[i].editable != second->slots[i].editable ||
+            (first->slots[i].editable &&
+             first->slots[i].value != second->slots[i].value) ||
+            first->slot_usages[i] != second->slot_usages[i])
+        {
+            return false;
+        }
+    }
+    return groups_match(first->groups, second->groups) &&
+           palettes_match(&first->palette, &second->palette);
+}
+
+/* True when board is exactly what init_board makes over its own puzzle. */
+static bool board_is_fresh(const Board* board)
+{
+    Board expected;
+    init_board(&expected, board->puzzle);
+    return boards_match(board, &expected);
+}
+
+/* A port whose generation functions are the fakes above. */
+static GamePort* create_fake_port(void)
+{
+    reset_fakes();
+    GamePort* game_port = create_game_port();
+    if (game_port != NULL)
+    {
+        game_port->generate_random_numbers_f = &fake_generate;
+        game_port->free_number_generation_f  = &fake_free;
+    }
+    return game_port;
+}
+
+/* Generates the first puzzle through the fake port and starts a board over it.
+ * The counters are reset afterwards, so tests count only the restarts. */
+static NumberGeneration* start_fake_game(const GamePort* game_port,
+                                         Board* board)
+{
+    NumberGeneration* puzzle =
+        game_port->generate_random_numbers_f(game_port->difficulty);
+    if (puzzle != NULL)
+    {
+        game_port->init_board_f(board, puzzle);
+    }
+    fake_generate_calls      = 0;
+    fake_generate_difficulty = -1;
+    return puzzle;
+}
+
+/* Typed slot, typed group boxes, a remembered cursor and corrupt derived data,
+ * with the focus on the restart control. */
+static void mess_up_board(Board* board)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board->slots[i].editable)
+        {
+            board->slots[i].value = TEST_TYPED_VALUE;
+        }
+        board->slot_usages[i] = SLOT_USAGE_TWICE;
+    }
+    board->groups[TEST_MESSY_GROUP_CELL] =
+        fixture_groups[TEST_MESSY_GROUP_CELL];
+    board->group_cursor = TEST_MESSY_GROUP_CELL;
+    board->group_field  = GROUP_FIELD_GREATER;
+    board->palette.background.color =
+        board->palette.background.color == PALETTE_COLOR_RED
+            ? PALETTE_COLOR_BLUE
+            : PALETTE_COLOR_RED;
+    board->focus = BOARD_FOCUS_RESTART;
+}
+
+static void test_restart_game_replaces_puzzle_and_frees_old_once(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    uintptr_t old_address = (uintptr_t)puzzle;
+    bool restarted        = restart_game(game_port, &board, &puzzle);
+    bool replaced         = (uintptr_t)puzzle != old_address;
+    bool borrowed         = board.puzzle == puzzle;
+    int difficulty        = game_port->difficulty;
+    int free_calls        = fake_free_calls;
+    uintptr_t freed       = fake_freed[0];
+    int generate_calls    = fake_generate_calls;
+    int generated_with    = fake_generate_difficulty;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(replaced);
+    ASSERT_TRUE(borrowed);
+    ASSERT_EQ_INT(free_calls, 1);
+    ASSERT_TRUE(freed == old_address);
+    ASSERT_EQ_INT(generate_calls, 1);
+    ASSERT_EQ_INT(generated_with, difficulty);
+}
+
+static void test_restart_game_resets_board_to_initial_state(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    mess_up_board(&board);
+    board.result       = BOARD_RESULT_WRONG;
+    bool restarted     = restart_game(game_port, &board, &puzzle);
+    bool fresh         = board_is_fresh(&board);
+    BoardResult result = board.result;
+    BoardFocus focus   = board.focus;
+    bool groups_empty  = true;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        groups_empty = groups_empty &&
+                       board.groups[i].smaller == TETONOR_EMPTY_ENTRY &&
+                       board.groups[i].greater == TETONOR_EMPTY_ENTRY &&
+                       board.groups[i].operation == GROUP_OPERATION_NONE;
+        groups_empty =
+            groups_empty && (!board.slots[i].editable ||
+                             board.slots[i].value == TETONOR_EMPTY_ENTRY);
+    }
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(fresh);
+    ASSERT_TRUE(groups_empty);
+    ASSERT_EQ_INT(result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(focus, BOARD_FOCUS_SLOT);
+}
+
+/* Plays a full session (offset 0 is correct, 1 is wrong), moves the focus to
+ * the restart control and presses it, as the UI does. */
+static void play_and_press_restart(const GamePort* game_port, Board* board,
+                                   const NumberGeneration* puzzle, int offset,
+                                   BoardResult expected, bool* restart_event,
+                                   bool* judged_as_expected)
+{
+    play_session(game_port, board, puzzle, offset);
+    *judged_as_expected = board->result == expected;
+    press_through_port(game_port, board, BOARD_INPUT_MOVE_DOWN);
+    BoardInput activate = {.kind = BOARD_INPUT_ACTIVATE};
+    *restart_event =
+        game_port->apply_board_input_f(board, activate) == BOARD_EVENT_RESTART;
+}
+
+static void assert_restart_after_result(int offset, BoardResult expected)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    bool restart_event;
+    bool judged;
+    play_and_press_restart(game_port, &board, puzzle, offset, expected,
+                           &restart_event, &judged);
+    bool restarted = restart_event && restart_game(game_port, &board, &puzzle);
+    bool fresh     = board_is_fresh(&board);
+    BoardResult result = board.result;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(judged);
+    ASSERT_TRUE(restart_event);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(fresh);
+    ASSERT_EQ_INT(result, BOARD_RESULT_PENDING);
+}
+
+static void test_restart_game_after_correct_result_starts_pending(void)
+{
+    assert_restart_after_result(0, BOARD_RESULT_CORRECT);
+}
+
+static void test_restart_game_after_wrong_result_starts_pending(void)
+{
+    assert_restart_after_result(1, BOARD_RESULT_WRONG);
+}
+
+static void test_restart_game_before_any_answer_starts_pending(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    press_through_port(game_port, &board, BOARD_INPUT_MOVE_DOWN);
+    press_through_port(game_port, &board, BOARD_INPUT_MOVE_DOWN);
+    BoardFocus focus_before = board.focus;
+    BoardInput activate     = {.kind = BOARD_INPUT_ACTIVATE};
+    BoardEvent event        = game_port->apply_board_input_f(&board, activate);
+    bool restarted          = event == BOARD_EVENT_RESTART &&
+                              restart_game(game_port, &board, &puzzle);
+    bool fresh              = board_is_fresh(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(focus_before, BOARD_FOCUS_RESTART);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(fresh);
+}
+
+static void test_restart_game_uses_new_puzzle_numbers(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    bool old_editable_before     = board.slots[fixture_old_hidden[0]].editable;
+    fake_hidden                  = fixture_new_hidden;
+    fake_hidden_count            = TEST_NEW_HIDDEN_COUNT;
+    bool restarted               = restart_game(game_port, &board, &puzzle);
+    bool slots_follow_new_puzzle = true;
+    int editable_count           = 0;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        slots_follow_new_puzzle =
+            slots_follow_new_puzzle &&
+            board.slots[i].editable ==
+                (puzzle->available_array[i] == TETONOR_HIDDEN_NUMBER);
+        editable_count += board.slots[i].editable ? 1 : 0;
+    }
+    bool old_editable_after = board.slots[fixture_old_hidden[0]].editable;
+    int cursor              = board.cursor;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(old_editable_before);
+    ASSERT_FALSE(old_editable_after);
+    ASSERT_TRUE(slots_follow_new_puzzle);
+    ASSERT_EQ_INT(editable_count, TEST_NEW_HIDDEN_COUNT);
+    ASSERT_EQ_INT(cursor, fixture_new_hidden[0]);
+}
+
+static void test_restart_game_generation_failure_keeps_game(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    mess_up_board(&board);
+    board.result                 = BOARD_RESULT_WRONG;
+    Board before                 = board;
+    NumberGeneration* old_puzzle = puzzle;
+    fake_generate_fails          = true;
+    bool restarted               = restart_game(game_port, &board, &puzzle);
+    bool same_puzzle             = puzzle == old_puzzle;
+    bool same_board              = boards_match(&board, &before);
+    int free_calls               = fake_free_calls;
+    int generate_calls           = fake_generate_calls;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(restarted);
+    ASSERT_TRUE(same_puzzle);
+    ASSERT_TRUE(same_board);
+    ASSERT_EQ_INT(free_calls, 0);
+    ASSERT_EQ_INT(generate_calls, 1);
+}
+
+static void test_restart_game_after_failure_can_restart_again(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    uintptr_t old_address = (uintptr_t)puzzle;
+    fake_generate_fails   = true;
+    bool failed           = !restart_game(game_port, &board, &puzzle);
+    fake_generate_fails   = false;
+    bool restarted        = restart_game(game_port, &board, &puzzle);
+    bool borrowed         = board.puzzle == puzzle;
+    int free_calls        = fake_free_calls;
+    uintptr_t freed       = fake_freed[0];
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(failed);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(borrowed);
+    ASSERT_EQ_INT(free_calls, 1);
+    ASSERT_TRUE(freed == old_address);
+}
+
+static void test_restart_game_twice_frees_each_old_puzzle_once(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    uintptr_t first_address  = (uintptr_t)puzzle;
+    bool first_restart       = restart_game(game_port, &board, &puzzle);
+    uintptr_t second_address = (uintptr_t)puzzle;
+    bool second_restart      = restart_game(game_port, &board, &puzzle);
+    bool borrowed            = board.puzzle == puzzle;
+    int free_calls           = fake_free_calls;
+    uintptr_t first_freed    = fake_freed[0];
+    uintptr_t second_freed   = fake_freed[1];
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(first_restart);
+    ASSERT_TRUE(second_restart);
+    ASSERT_TRUE(borrowed);
+    ASSERT_EQ_INT(free_calls, 2);
+    ASSERT_TRUE(first_freed == first_address);
+    ASSERT_TRUE(second_freed == second_address);
+}
+
+static void test_restart_game_with_real_port_replaces_puzzle(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle = generate_through_port(game_port);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    mess_up_board(&board);
+    uintptr_t old_address = (uintptr_t)puzzle;
+    bool restarted        = restart_game(game_port, &board, &puzzle);
+    bool replaced         = (uintptr_t)puzzle != old_address;
+    bool borrowed         = board.puzzle == puzzle;
+    bool fresh            = board_is_fresh(&board);
+    int hidden            = restarted ? count_hidden(puzzle) : 0;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(replaced);
+    ASSERT_TRUE(borrowed);
+    ASSERT_TRUE(fresh);
+    ASSERT_TRUE(hidden >= 1);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -314,5 +769,15 @@ int main(void)
     RUN_TEST(test_game_port_board_session_through_port_is_wrong);
     RUN_TEST(test_game_port_groups_typed_through_port_match_solution);
     RUN_TEST(test_game_port_board_session_without_groups_stays_pending);
+    RUN_TEST(test_restart_game_replaces_puzzle_and_frees_old_once);
+    RUN_TEST(test_restart_game_resets_board_to_initial_state);
+    RUN_TEST(test_restart_game_after_correct_result_starts_pending);
+    RUN_TEST(test_restart_game_after_wrong_result_starts_pending);
+    RUN_TEST(test_restart_game_before_any_answer_starts_pending);
+    RUN_TEST(test_restart_game_uses_new_puzzle_numbers);
+    RUN_TEST(test_restart_game_generation_failure_keeps_game);
+    RUN_TEST(test_restart_game_after_failure_can_restart_again);
+    RUN_TEST(test_restart_game_twice_frees_each_old_puzzle_once);
+    RUN_TEST(test_restart_game_with_real_port_replaces_puzzle);
     return test_harness_result();
 }

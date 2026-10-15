@@ -39,9 +39,16 @@ typedef struct
 
 typedef enum
 {
+    BOARD_EVENT_NONE,   /* the input was handled inside the board */
+    BOARD_EVENT_RESTART /* the player asked for a new game; the caller acts */
+} BoardEvent;
+
+typedef enum
+{
     BOARD_FOCUS_SLOT,   /* the slot at cursor */
     BOARD_FOCUS_SUBMIT, /* the control that submits the whole answer */
-    BOARD_FOCUS_GROUP   /* field group_field of groups[group_cursor] */
+    BOARD_FOCUS_GROUP,  /* field group_field of groups[group_cursor] */
+    BOARD_FOCUS_RESTART /* the control that starts a new game */
 } BoardFocus;
 
 typedef struct
@@ -73,7 +80,9 @@ void init_board(Board* board, const NumberGeneration* puzzle);
 
 /* Applies one player input. Slot and group focus edit and move; ACTIVATE on
  * the submit control judges the whole answer once every editable slot and
- * every group box is filled. Recomputes slot_usages after every input. */
-void apply_board_input(Board* board, BoardInput input);
+ * every group box is filled. Recomputes slot_usages after every input.
+ * ACTIVATE on the restart control returns BOARD_EVENT_RESTART and leaves the
+ * board unchanged; every other input returns BOARD_EVENT_NONE. */
+BoardEvent apply_board_input(Board* board, BoardInput input);
 
 #endif

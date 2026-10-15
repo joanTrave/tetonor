@@ -18,7 +18,9 @@ static const char wrong_message[]   = "WRONG ANSWER";
 
 static void print_sum_matrix(const Board* board);
 static void print_available_array(const Board* board);
+static void print_button(LayoutPoint origin, const char* label, bool focused);
 static void print_confirm_button(const Board* board);
+static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
 
 void print_layout(const Board* board)
@@ -34,6 +36,7 @@ void print_layout(const Board* board)
     print_sum_matrix(board);
     print_available_array(board);
     print_confirm_button(board);
+    print_restart_button(board);
     print_result(board);
 }
 
@@ -283,8 +286,19 @@ static void print_available_array(const Board* board)
  * reverse-video bar, never by colour alone. */
 static void print_confirm_button(const Board* board)
 {
-    LayoutPoint origin = layout_confirm_button_origin();
-    bool focused       = board->focus == BOARD_FOCUS_SUBMIT;
+    print_button(layout_confirm_button_origin(), LAYOUT_CONFIRM_LABEL,
+                 board->focus == BOARD_FOCUS_SUBMIT);
+}
+
+/* The player's way to start a brand new game, drawn like CONFIRM. */
+static void print_restart_button(const Board* board)
+{
+    print_button(layout_restart_button_origin(), LAYOUT_RESTART_LABEL,
+                 board->focus == BOARD_FOCUS_RESTART);
+}
+
+static void print_button(LayoutPoint origin, const char* label, bool focused)
+{
     attr_t label_attrs = focused ? (A_REVERSE | A_BOLD) : A_NORMAL;
 
     draw_box(origin.y, origin.x, LAYOUT_BUTTON_H, LAYOUT_BUTTON_W);
@@ -293,11 +307,11 @@ static void print_confirm_button(const Board* board)
         draw_focus_bar(origin.y + 1, origin.x + 1, LAYOUT_BUTTON_W - 2,
                        label_attrs);
     }
-    int label_len = (int)strlen(LAYOUT_CONFIRM_LABEL);
+    int label_len = (int)strlen(label);
     attr_on(label_attrs, NULL);
     mvprintw(origin.y + 1,
              origin.x + layout_centered_offset(LAYOUT_BUTTON_W, label_len),
-             "%s", LAYOUT_CONFIRM_LABEL);
+             "%s", label);
     attr_off(label_attrs, NULL);
 }
 
