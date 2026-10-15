@@ -225,13 +225,47 @@ static void test_layout_confirm_button_does_not_overlap_boxes_or_message(void)
     ASSERT_TRUE(button.y + LAYOUT_BUTTON_H - 1 < message.y);
 }
 
-static void test_layout_result_message_origin_below_confirm_button(void)
+static void test_layout_restart_button_origin_below_confirm(void)
+{
+    LayoutPoint origin  = layout_restart_button_origin();
+    LayoutPoint confirm = layout_confirm_button_origin();
+    ASSERT_EQ_INT(origin.y, confirm.y + LAYOUT_BUTTON_H);
+    ASSERT_EQ_INT(origin.x, confirm.x);
+    ASSERT_POINT(origin, 22, 68);
+}
+
+static void test_layout_restart_button_width_fits_label(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_RESTART_LABEL, "RESTART") == 0);
+    ASSERT_TRUE(LAYOUT_BUTTON_W >= (int)strlen(LAYOUT_RESTART_LABEL) + 2);
+}
+
+static void
+test_layout_restart_button_does_not_overlap_boxes_confirm_or_message(void)
+{
+    LayoutPoint restart = layout_restart_button_origin();
+    LayoutPoint confirm = layout_confirm_button_origin();
+    LayoutPoint message = layout_result_message_origin();
+    LayoutPoint last    = layout_available_cell_origin(TEST_LAST_INDEX);
+    ASSERT_TRUE(restart.y > confirm.y + LAYOUT_BUTTON_H - 1);
+    ASSERT_TRUE(restart.y > last.y + LAYOUT_MINI_H - 1 ||
+                restart.x > last.x + LAYOUT_MINI_W - 1);
+    ASSERT_TRUE(restart.y + LAYOUT_BUTTON_H - 1 < message.y);
+}
+
+static void test_layout_result_message_origin_below_restart_button(void)
 {
     LayoutPoint origin = layout_result_message_origin();
-    ASSERT_EQ_INT(origin.y, layout_confirm_button_origin().y + LAYOUT_BUTTON_H +
+    ASSERT_EQ_INT(origin.y, layout_restart_button_origin().y + LAYOUT_BUTTON_H +
                                 LAYOUT_MESSAGE_GAP);
     ASSERT_EQ_INT(origin.x, LAYOUT_ORIGIN_X);
-    ASSERT_POINT(origin, 23, 2);
+    ASSERT_POINT(origin, 26, 2);
+}
+
+static void test_layout_result_message_is_on_the_last_minimum_row(void)
+{
+    LayoutPoint message = layout_result_message_origin();
+    ASSERT_EQ_INT(message.y + TEST_MESSAGE_ROWS - 1, LAYOUT_MIN_ROWS - 1);
 }
 
 static void test_layout_result_message_is_below_the_available_row(void)
@@ -247,6 +281,7 @@ static void test_layout_whole_board_fits_the_minimum_terminal(void)
         layout_sum_cell_origin(TEST_LAST_GRID_INDEX, TEST_LAST_GRID_INDEX);
     LayoutPoint last_mini = layout_available_cell_origin(TEST_LAST_INDEX);
     LayoutPoint button    = layout_confirm_button_origin();
+    LayoutPoint restart   = layout_restart_button_origin();
     LayoutPoint message   = layout_result_message_origin();
     int last_row          = message.y + TEST_MESSAGE_ROWS - 1;
     int last_col          = button.x + LAYOUT_BUTTON_W - 1;
@@ -256,32 +291,40 @@ static void test_layout_whole_board_fits_the_minimum_terminal(void)
     ASSERT_TRUE(last_mini.y + LAYOUT_MINI_H - 1 <= LAYOUT_MIN_ROWS - 1);
     ASSERT_TRUE(last_mini.x + LAYOUT_MINI_W - 1 <= LAYOUT_MIN_COLS - 1);
     ASSERT_TRUE(button.y + LAYOUT_BUTTON_H - 1 <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_TRUE(restart.y + LAYOUT_BUTTON_H - 1 <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_TRUE(restart.x + LAYOUT_BUTTON_W - 1 <= LAYOUT_MIN_COLS - 1);
     ASSERT_TRUE(last_row <= LAYOUT_MIN_ROWS - 1);
     ASSERT_TRUE(last_col <= LAYOUT_MIN_COLS - 1);
 }
 
-static void test_layout_minimum_terminal_is_eighty_by_twenty_four(void)
+static void test_layout_minimum_terminal_is_eighty_by_twenty_seven(void)
 {
-    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 24);
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
     ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
 }
 
 static void test_layout_fits_accepts_the_minimum_terminal(void)
 {
-    ASSERT_TRUE(layout_fits(24, 80));
+    ASSERT_TRUE(layout_fits(27, 80));
 }
 
 static void test_layout_fits_accepts_larger_terminals(void)
 {
-    ASSERT_TRUE(layout_fits(25, 80));
-    ASSERT_TRUE(layout_fits(24, 81));
+    ASSERT_TRUE(layout_fits(28, 80));
+    ASSERT_TRUE(layout_fits(27, 81));
     ASSERT_TRUE(layout_fits(50, 200));
 }
 
 static void test_layout_fits_rejects_terminals_one_short(void)
 {
-    ASSERT_FALSE(layout_fits(23, 80));
-    ASSERT_FALSE(layout_fits(24, 79));
+    ASSERT_FALSE(layout_fits(26, 80));
+    ASSERT_FALSE(layout_fits(27, 79));
+}
+
+static void test_layout_fits_rejects_the_former_minimum_height(void)
+{
+    ASSERT_FALSE(layout_fits(24, 80));
+    ASSERT_FALSE(layout_fits(25, 80));
 }
 
 static void test_layout_fits_rejects_degenerate_sizes(void)
@@ -298,7 +341,7 @@ static void test_layout_enlarge_message_names_the_minimum_size(void)
     int length = snprintf(text, sizeof text, LAYOUT_ENLARGE_FORMAT,
                           LAYOUT_MIN_COLS, LAYOUT_MIN_ROWS);
     ASSERT_TRUE(length > 0 && length < (int)sizeof text);
-    ASSERT_TRUE(strcmp(text, "Please enlarge the terminal to at least 80x24") ==
+    ASSERT_TRUE(strcmp(text, "Please enlarge the terminal to at least 80x27") ==
                 0);
 }
 
@@ -327,13 +370,19 @@ int main(void)
     RUN_TEST(test_layout_confirm_button_origin_beside_available_row);
     RUN_TEST(test_layout_confirm_button_width_fits_label);
     RUN_TEST(test_layout_confirm_button_does_not_overlap_boxes_or_message);
-    RUN_TEST(test_layout_result_message_origin_below_confirm_button);
+    RUN_TEST(test_layout_restart_button_origin_below_confirm);
+    RUN_TEST(test_layout_restart_button_width_fits_label);
+    RUN_TEST(
+        test_layout_restart_button_does_not_overlap_boxes_confirm_or_message);
+    RUN_TEST(test_layout_result_message_origin_below_restart_button);
+    RUN_TEST(test_layout_result_message_is_on_the_last_minimum_row);
     RUN_TEST(test_layout_result_message_is_below_the_available_row);
     RUN_TEST(test_layout_whole_board_fits_the_minimum_terminal);
-    RUN_TEST(test_layout_minimum_terminal_is_eighty_by_twenty_four);
+    RUN_TEST(test_layout_minimum_terminal_is_eighty_by_twenty_seven);
     RUN_TEST(test_layout_fits_accepts_the_minimum_terminal);
     RUN_TEST(test_layout_fits_accepts_larger_terminals);
     RUN_TEST(test_layout_fits_rejects_terminals_one_short);
+    RUN_TEST(test_layout_fits_rejects_the_former_minimum_height);
     RUN_TEST(test_layout_fits_rejects_degenerate_sizes);
     RUN_TEST(test_layout_enlarge_message_names_the_minimum_size);
     return test_harness_result();

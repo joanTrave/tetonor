@@ -34,7 +34,13 @@ int ui_run(const GamePort* game_port)
         }
         if (command.kind == BOARD_COMMAND_INPUT)
         {
-            game_port->apply_board_input_f(&board, command.input);
+            BoardEvent event =
+                game_port->apply_board_input_f(&board, command.input);
+            if (event == BOARD_EVENT_RESTART &&
+                restart_game(game_port, &board, &number_generation))
+            {
+                apply_palette_styles(&board.palette);
+            }
         }
         draw_board(&board);
         key = getch();

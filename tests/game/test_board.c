@@ -52,6 +52,17 @@ static void press(Board* board, BoardInputKind kind)
     apply_board_input(board, input);
 }
 
+static BoardEvent apply_for_event(Board* board, BoardInput input)
+{
+    return apply_board_input(board, input);
+}
+
+static BoardEvent press_for_event(Board* board, BoardInputKind kind)
+{
+    BoardInput input = {.kind = kind};
+    return apply_for_event(board, input);
+}
+
 static void press_digit(Board* board, int digit)
 {
     BoardInput input = {.kind = BOARD_INPUT_DIGIT, .digit = digit};
@@ -206,6 +217,13 @@ static bool boards_equal(const Board* first, const Board* second)
            groups_equal(first->groups, second->groups) &&
            memcmp(first->slot_usages, second->slot_usages,
                   sizeof first->slot_usages) == 0;
+}
+
+static bool equal_apart_from_focus(const Board* first, const Board* second)
+{
+    Board aligned = *first;
+    aligned.focus = second->focus;
+    return boards_equal(&aligned, second);
 }
 
 /* True when the only non-empty group box is the one given. */
@@ -781,16 +799,19 @@ static void test_apply_board_input_move_left_from_submit_returns_to_slot(void)
     ASSERT_EQ_INT(board.cursor, TEST_SECOND_SLOT);
 }
 
-static void test_apply_board_input_move_down_on_submit_is_noop(void)
+static void test_apply_board_input_move_down_on_submit_focuses_restart(void)
 {
     NumberGeneration puzzle;
     Board board;
     start_default_board(&puzzle, &board);
-    press(&board, BOARD_INPUT_MOVE_RIGHT);
-    press(&board, BOARD_INPUT_MOVE_DOWN);
-    Board before = board;
-    press(&board, BOARD_INPUT_MOVE_DOWN);
-    ASSERT_TRUE(boards_equal(&board, &before));
+    place_group_focus(&board, 6, GROUP_FIELD_OPERATION);
+    board.cursor     = TEST_SECOND_SLOT;
+    board.focus      = BOARD_FOCUS_SUBMIT;
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_MOVE_DOWN);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_TRUE(equal_apart_from_focus(&board, &before));
 }
 
 static void test_apply_board_input_move_right_on_submit_is_noop(void)
@@ -2193,7 +2214,7 @@ static void test_apply_board_input_never_changes_given_numbers(void)
 #define TEST_FOURTH_GROUP_CELL 3
 #define TEST_GARBAGE_BYTE 0xA5
 #define TEST_INPUT_KIND_COUNT 8
-#define TEST_FOCUS_COUNT 3
+#define TEST_FOCUS_COUNT 4
 
 static const OperandGroup usage_add_group        = {1, GROUP_OPERATION_ADD, 2};
 static const OperandGroup usage_multiply_group   = {1, GROUP_OPERATION_MULTIPLY,
@@ -2205,7 +2226,8 @@ static const BoardInputKind fixture_input_kinds[TEST_INPUT_KIND_COUNT] = {
     BOARD_INPUT_MOVE_DOWN, BOARD_INPUT_DIGIT,      BOARD_INPUT_DELETE,
     BOARD_INPUT_ACTIVATE,  BOARD_INPUT_OPERATION};
 static const BoardFocus fixture_focuses[TEST_FOCUS_COUNT] = {
-    BOARD_FOCUS_SLOT, BOARD_FOCUS_SUBMIT, BOARD_FOCUS_GROUP};
+    BOARD_FOCUS_SLOT, BOARD_FOCUS_SUBMIT, BOARD_FOCUS_GROUP,
+    BOARD_FOCUS_RESTART};
 
 /* Leaves the focus on the greater box of the group. */
 static void enter_group_in_cell(Board* board, int cell,
@@ -2642,6 +2664,259 @@ static void test_apply_board_input_recomputes_marks_after_every_input(void)
     }
 }
 
+#define TEST_NOOP_INPUT_COUNT 5
+#define TEST_TYPED_FIRST_VALUE 2
+
+static const BoardInput fixture_restart_noop_inputs[TEST_NOOP_INPUT_COUNT] = {
+    {.kind = BOARD_INPUT_MOVE_RIGHT},
+    {.kind = BOARD_INPUT_MOVE_DOWN},
+    {.kind = BOARD_INPUT_DIGIT, .digit = TEST_UNUSED_VALUE},
+    {.kind = BOARD_INPUT_DELETE},
+    {.kind = BOARD_INPUT_OPERATION, .operation = GROUP_OPERATION_ADD}};
+
+static void focus_restart_by_inputs(Board* board)
+{
+    press(board, BOARD_INPUT_MOVE_DOWN);
+    press(board, BOARD_INPUT_MOVE_DOWN);
+}
+
+/* Leaves the focus on the restart control. Either submits the given values
+ * (judged) or leaves a typed slot and a typed group box unjudged. */
+static void start_restart_board(NumberGeneration* puzzle, Board* board,
+                                const int values[TEST_EDITABLE_COUNT],
+                                bool judged)
+{
+    start_default_board(puzzle, board);
+    if (judged)
+    {
+        fill_and_submit(board, values);
+    }
+    else
+    {
+        type_value(board, TEST_TYPED_FIRST_VALUE);
+        board->groups[0].smaller = 1;
+        board->focus             = BOARD_FOCUS_SUBMIT;
+    }
+    press(board, BOARD_INPUT_MOVE_DOWN);
+}
+
+static void test_apply_board_input_move_up_on_restart_focuses_submit(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    place_group_focus(&board, 6, GROUP_FIELD_OPERATION);
+    board.cursor     = TEST_SECOND_SLOT;
+    board.focus      = BOARD_FOCUS_RESTART;
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    ASSERT_TRUE(equal_apart_from_focus(&board, &before));
+}
+
+static void test_apply_board_input_activate_on_restart_requests_restart(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_restart_board(&puzzle, &board, fixture_hidden_values, false);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(event, BOARD_EVENT_RESTART);
+    ASSERT_TRUE(boards_equal(&board, &before));
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+}
+
+static void
+test_apply_board_input_activate_on_restart_after_correct_requests_restart(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_restart_board(&puzzle, &board, fixture_hidden_values, true);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(event, BOARD_EVENT_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void
+test_apply_board_input_activate_on_restart_after_wrong_requests_restart(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_restart_board(&puzzle, &board, fixture_wrong_last_values, true);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(event, BOARD_EVENT_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void test_apply_board_input_activate_on_restart_does_not_judge(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    for (int i = 0; i < TEST_EDITABLE_COUNT; i++)
+    {
+        board.slots[fixture_hidden[i]].value = fixture_hidden_values[i];
+    }
+    board.focus      = BOARD_FOCUS_RESTART;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(event, BOARD_EVENT_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+}
+
+static void assert_noop_inputs_on_restart(Board* board)
+{
+    BoardResult result = board->result;
+    for (int i = 0; i < TEST_NOOP_INPUT_COUNT; i++)
+    {
+        Board before = *board;
+        BoardEvent event =
+            apply_for_event(board, fixture_restart_noop_inputs[i]);
+        ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+        ASSERT_EQ_INT(board->focus, BOARD_FOCUS_RESTART);
+        ASSERT_EQ_INT(board->result, result);
+        ASSERT_TRUE(boards_equal(board, &before));
+    }
+}
+
+static void test_apply_board_input_noop_inputs_on_restart(void)
+{
+    NumberGeneration pending_puzzle;
+    Board pending;
+    start_restart_board(&pending_puzzle, &pending, fixture_hidden_values,
+                        false);
+    assert_noop_inputs_on_restart(&pending);
+    NumberGeneration wrong_puzzle;
+    Board wrong;
+    start_restart_board(&wrong_puzzle, &wrong, fixture_wrong_last_values, true);
+    ASSERT_EQ_INT(wrong.result, BOARD_RESULT_WRONG);
+    assert_noop_inputs_on_restart(&wrong);
+    NumberGeneration correct_puzzle;
+    Board correct;
+    start_restart_board(&correct_puzzle, &correct, fixture_hidden_values, true);
+    ASSERT_EQ_INT(correct.result, BOARD_RESULT_CORRECT);
+    assert_noop_inputs_on_restart(&correct);
+}
+
+static void test_apply_board_input_move_left_on_restart_returns_to_slot(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    focus_restart_by_inputs(&board);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_MOVE_LEFT);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    ASSERT_EQ_INT(board.cursor, TEST_SECOND_SLOT);
+    ASSERT_TRUE(equal_apart_from_focus(&board, &before));
+}
+
+static void
+test_apply_board_input_without_editable_slots_left_on_restart_focuses_group(
+    void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    place_group_focus(&board, TEST_LAST_CELL - 1, GROUP_FIELD_OPERATION);
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_MOVE_DOWN);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    Board before     = board;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_MOVE_LEFT);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_GROUP);
+    ASSERT_EQ_INT(board.cursor, TETONOR_NO_CURSOR);
+    ASSERT_EQ_INT(board.group_cursor, TEST_LAST_CELL - 1);
+    ASSERT_EQ_INT(board.group_field, GROUP_FIELD_OPERATION);
+    ASSERT_TRUE(equal_apart_from_focus(&board, &before));
+}
+
+static void test_apply_board_input_returns_none_outside_restart(void)
+{
+    for (int f = 0; f < TEST_FOCUS_COUNT; f++)
+    {
+        if (fixture_focuses[f] == BOARD_FOCUS_RESTART)
+        {
+            continue;
+        }
+        for (int k = 0; k < TEST_INPUT_KIND_COUNT; k++)
+        {
+            NumberGeneration puzzle;
+            Board board;
+            start_default_board(&puzzle, &board);
+            fill_solution_groups(&board);
+            for (int i = 0; i < TEST_EDITABLE_COUNT; i++)
+            {
+                board.slots[fixture_hidden[i]].value = fixture_hidden_values[i];
+            }
+            place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+            board.focus      = fixture_focuses[f];
+            BoardInput input = {.kind      = fixture_input_kinds[k],
+                                .digit     = TEST_UNUSED_VALUE,
+                                .operation = GROUP_OPERATION_ADD};
+            ASSERT_EQ_INT(apply_for_event(&board, input), BOARD_EVENT_NONE);
+        }
+    }
+}
+
+static void
+test_apply_board_input_activate_on_submit_judges_and_returns_none(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    for (int i = 0; i < TEST_EDITABLE_COUNT; i++)
+    {
+        board.slots[fixture_hidden[i]].value = fixture_hidden_values[i];
+    }
+    board.focus      = BOARD_FOCUS_SUBMIT;
+    BoardEvent event = press_for_event(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+}
+
+static void test_apply_board_input_slot_down_down_reaches_restart(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    ASSERT_EQ_INT(press_for_event(&board, BOARD_INPUT_MOVE_DOWN),
+                  BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    ASSERT_EQ_INT(press_for_event(&board, BOARD_INPUT_MOVE_DOWN),
+                  BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+}
+
+static void test_apply_board_input_restart_up_up_returns_to_slot(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    focus_restart_by_inputs(&board);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    ASSERT_EQ_INT(board.cursor, TEST_FIRST_SLOT);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -2686,7 +2961,7 @@ int main(void)
     RUN_TEST(test_apply_board_input_group_movement_keeps_every_value);
     RUN_TEST(test_apply_board_input_move_up_from_submit_returns_to_slot);
     RUN_TEST(test_apply_board_input_move_left_from_submit_returns_to_slot);
-    RUN_TEST(test_apply_board_input_move_down_on_submit_is_noop);
+    RUN_TEST(test_apply_board_input_move_down_on_submit_focuses_restart);
     RUN_TEST(test_apply_board_input_move_right_on_submit_is_noop);
     RUN_TEST(test_apply_board_input_submit_up_keeps_remembered_group_box);
     RUN_TEST(test_apply_board_input_digit_on_empty_slot_sets_value);
@@ -2819,5 +3094,20 @@ int main(void)
     RUN_TEST(test_apply_board_input_correct_result_leaves_marks_unchanged);
     RUN_TEST(test_apply_board_input_recomputes_marks_after_an_ignored_input);
     RUN_TEST(test_apply_board_input_recomputes_marks_after_every_input);
+    RUN_TEST(test_apply_board_input_move_up_on_restart_focuses_submit);
+    RUN_TEST(test_apply_board_input_activate_on_restart_requests_restart);
+    RUN_TEST(
+        test_apply_board_input_activate_on_restart_after_correct_requests_restart);
+    RUN_TEST(
+        test_apply_board_input_activate_on_restart_after_wrong_requests_restart);
+    RUN_TEST(test_apply_board_input_activate_on_restart_does_not_judge);
+    RUN_TEST(test_apply_board_input_noop_inputs_on_restart);
+    RUN_TEST(test_apply_board_input_move_left_on_restart_returns_to_slot);
+    RUN_TEST(
+        test_apply_board_input_without_editable_slots_left_on_restart_focuses_group);
+    RUN_TEST(test_apply_board_input_returns_none_outside_restart);
+    RUN_TEST(test_apply_board_input_activate_on_submit_judges_and_returns_none);
+    RUN_TEST(test_apply_board_input_slot_down_down_reaches_restart);
+    RUN_TEST(test_apply_board_input_restart_up_up_returns_to_slot);
     return test_harness_result();
 }

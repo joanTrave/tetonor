@@ -21,3 +21,18 @@ void destroy_game_port(GamePort* game_port)
 {
     free(game_port);
 }
+
+bool restart_game(const GamePort* game_port, Board* board,
+                  NumberGeneration** puzzle)
+{
+    NumberGeneration* next =
+        game_port->generate_random_numbers_f(game_port->difficulty);
+    if (next == NULL)
+    {
+        return false;
+    }
+    game_port->init_board_f(board, next);
+    game_port->free_number_generation_f(*puzzle);
+    *puzzle = next;
+    return true;
+}

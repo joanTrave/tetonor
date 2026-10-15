@@ -6,6 +6,7 @@
 static void apply_slot_input(Board* board, BoardInput input);
 static void apply_group_input(Board* board, BoardInput input);
 static void apply_submit_input(Board* board, BoardInput input);
+static BoardEvent apply_restart_input(Board* board, BoardInput input);
 static int find_editable_slot(const Board* board, int from, int step);
 static bool move_cursor(Board* board, int step);
 static void move_group_horizontally(Board* board, int step);
@@ -13,6 +14,7 @@ static bool move_group_vertically(Board* board, int step);
 static void leave_groups_downward(Board* board);
 static void leave_submit(Board* board);
 static void focus_submit(Board* board);
+static void focus_restart(Board* board);
 static int* focused_group_number(Board* board);
 static void set_operation(Board* board, GroupOperation operation);
 static void clear_operation(Board* board);
@@ -47,8 +49,9 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     refresh_slot_usages(board);
 }
 
-void apply_board_input(Board* board, BoardInput input)
+BoardEvent apply_board_input(Board* board, BoardInput input)
 {
+    BoardEvent event = BOARD_EVENT_NONE;
     switch (board->focus)
     {
         case BOARD_FOCUS_SLOT:
@@ -60,8 +63,12 @@ void apply_board_input(Board* board, BoardInput input)
         case BOARD_FOCUS_SUBMIT:
             apply_submit_input(board, input);
             break;
+        case BOARD_FOCUS_RESTART:
+            event = apply_restart_input(board, input);
+            break;
     }
     refresh_slot_usages(board);
+    return event;
 }
 
 static void apply_slot_input(Board* board, BoardInput input)
@@ -154,6 +161,29 @@ static void apply_submit_input(Board* board, BoardInput input)
         case BOARD_INPUT_ACTIVATE:
             submit_answer(board);
             break;
+        case BOARD_INPUT_MOVE_DOWN:
+            focus_restart(board);
+            break;
+        case BOARD_INPUT_MOVE_RIGHT:
+        case BOARD_INPUT_DIGIT:
+        case BOARD_INPUT_DELETE:
+        case BOARD_INPUT_OPERATION:
+            break;
+    }
+}
+
+static BoardEvent apply_restart_input(Board* board, BoardInput input)
+{
+    switch (input.kind)
+    {
+        case BOARD_INPUT_MOVE_UP:
+            focus_submit(board);
+            break;
+        case BOARD_INPUT_MOVE_LEFT:
+            leave_submit(board);
+            break;
+        case BOARD_INPUT_ACTIVATE:
+            return BOARD_EVENT_RESTART;
         case BOARD_INPUT_MOVE_RIGHT:
         case BOARD_INPUT_MOVE_DOWN:
         case BOARD_INPUT_DIGIT:
@@ -161,6 +191,7 @@ static void apply_submit_input(Board* board, BoardInput input)
         case BOARD_INPUT_OPERATION:
             break;
     }
+    return BOARD_EVENT_NONE;
 }
 
 /* First editable index at or beyond from, walking by step; TETONOR_NO_CURSOR
@@ -239,6 +270,11 @@ static void leave_submit(Board* board)
 static void focus_submit(Board* board)
 {
     board->focus = BOARD_FOCUS_SUBMIT;
+}
+
+static void focus_restart(Board* board)
+{
+    board->focus = BOARD_FOCUS_RESTART;
 }
 
 /* The focused group's number box, or NULL when the operation box is focused. */

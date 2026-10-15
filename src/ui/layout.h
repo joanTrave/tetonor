@@ -32,13 +32,14 @@
 #define LAYOUT_SECTION_GAP 1 /* the "Available:" label row */
 #define LAYOUT_MESSAGE_GAP 1 /* blank rows above the result message */
 #define LAYOUT_CONFIRM_LABEL "CONFIRM"
+#define LAYOUT_RESTART_LABEL "RESTART"
 #define LAYOUT_BUTTON_PADDING 1 /* blank columns each side of the label */
 #define LAYOUT_BUTTON_H 3
 #define LAYOUT_BUTTON_W                                                        \
     ((int)(sizeof LAYOUT_CONFIRM_LABEL - 1) + 2 * (LAYOUT_BUTTON_PADDING + 1))
 #define LAYOUT_BUTTON_GAP_X                                                    \
     2 /* columns between last available box and button */
-#define LAYOUT_MIN_ROWS 24
+#define LAYOUT_MIN_ROWS 27
 #define LAYOUT_MIN_COLS 80
 /* printf format: columns, then rows. */
 #define LAYOUT_ENLARGE_FORMAT "Please enlarge the terminal to at least %dx%d"
@@ -80,7 +81,10 @@ LayoutPoint layout_available_cell_origin(int index);
 /* Top-left corner of the CONFIRM button, beside the available row. */
 LayoutPoint layout_confirm_button_origin(void);
 
-/* Row/column of the result message, below the CONFIRM button. */
+/* Top-left corner of the RESTART button, directly below CONFIRM. */
+LayoutPoint layout_restart_button_origin(void);
+
+/* Row/column of the result message, below the RESTART button. */
 LayoutPoint layout_result_message_origin(void);
 
 /* True when a terminal of rows x cols holds the whole board. */

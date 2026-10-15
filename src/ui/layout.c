@@ -75,11 +75,18 @@ LayoutPoint layout_confirm_button_origin(void)
     return origin;
 }
 
+LayoutPoint layout_restart_button_origin(void)
+{
+    LayoutPoint origin = layout_confirm_button_origin();
+    origin.y += LAYOUT_BUTTON_H;
+    return origin;
+}
+
 LayoutPoint layout_result_message_origin(void)
 {
     LayoutPoint origin;
     origin.y =
-        layout_confirm_button_origin().y + LAYOUT_BUTTON_H + LAYOUT_MESSAGE_GAP;
+        layout_restart_button_origin().y + LAYOUT_BUTTON_H + LAYOUT_MESSAGE_GAP;
     origin.x = LAYOUT_ORIGIN_X;
     return origin;
 }
