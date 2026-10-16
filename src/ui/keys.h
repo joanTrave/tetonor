@@ -1,6 +1,7 @@
 #ifndef TETONOR_UI_KEYS_H
 #define TETONOR_UI_KEYS_H
 
+#include "difficulty_menu.h"
 #include "menu.h"
 #include "../game/game_port.h"
 
@@ -53,6 +54,20 @@ typedef struct
 /* Maps a key to a menu action. enter_key is the curses KEY_ENTER value, passed
  * in so this module stays free of curses. */
 MenuResult menu_result_from_key(int key, int enter_key);
+
+/* Curses key codes the menus need, passed in so this module stays free of
+ * curses. */
+typedef struct
+{
+    int enter; /* KEY_ENTER */
+    int up;    /* KEY_UP */
+    int down;  /* KEY_DOWN */
+} MenuKeyCodes;
+
+/* Maps a key to a difficulty-screen command. Unknown keys give
+ * DIFFICULTY_COMMAND_NONE. */
+DifficultyMenuCommand
+difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes);
 
 /* Maps a key to a board command. Unknown keys give BOARD_COMMAND_NONE. */
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes);

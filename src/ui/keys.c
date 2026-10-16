@@ -21,6 +21,29 @@ static bool key_matches(int key, int code)
     return code != TETONOR_KEY_UNAVAILABLE && key == code;
 }
 
+DifficultyMenuCommand
+difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes)
+{
+    if (key_matches(key, key_codes->up))
+    {
+        return DIFFICULTY_COMMAND_UP;
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return DIFFICULTY_COMMAND_DOWN;
+    }
+    if (key == TETONOR_KEY_SPACE || key == TETONOR_KEY_NEWLINE ||
+        key == TETONOR_KEY_RETURN || key_matches(key, key_codes->enter))
+    {
+        return DIFFICULTY_COMMAND_CONFIRM;
+    }
+    if (key == TETONOR_KEY_ESCAPE)
+    {
+        return DIFFICULTY_COMMAND_BACK;
+    }
+    return DIFFICULTY_COMMAND_NONE;
+}
+
 static BoardCommand make_board_command(BoardCommandKind kind,
                                        BoardInputKind input_kind, int digit)
 {

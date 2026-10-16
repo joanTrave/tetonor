@@ -25,6 +25,11 @@ LayoutPoint layout_centered_window_origin(int screen_rows, int screen_cols,
     return origin;
 }
 
+int layout_difficulty_option_row(int difficulty)
+{
+    return LAYOUT_DIFFICULTY_FIRST_OPTION_ROW + difficulty;
+}
+
 LayoutPoint layout_sum_cell_origin(int row, int col)
 {
     LayoutPoint origin;

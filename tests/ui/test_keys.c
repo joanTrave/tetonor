@@ -313,6 +313,116 @@ static void test_board_command_from_key_available_codes_still_work(void)
     ASSERT_DIGIT_COMMAND('7', unavailable_codes, 7);
 }
 
+static const MenuKeyCodes menu_codes = {
+    .enter = TEST_ENTER_KEY, .up = TEST_UP_KEY, .down = TEST_DOWN_KEY};
+
+static const MenuKeyCodes unavailable_menu_codes = {
+    .enter = TETONOR_KEY_UNAVAILABLE,
+    .up    = TETONOR_KEY_UNAVAILABLE,
+    .down  = TETONOR_KEY_UNAVAILABLE};
+
+static void test_difficulty_menu_command_from_key_arrows_move(void)
+{
+    ASSERT_EQ_INT(difficulty_menu_command_from_key(TEST_UP_KEY, &menu_codes),
+                  DIFFICULTY_COMMAND_UP);
+    ASSERT_EQ_INT(difficulty_menu_command_from_key(TEST_DOWN_KEY, &menu_codes),
+                  DIFFICULTY_COMMAND_DOWN);
+}
+
+static void test_difficulty_menu_command_from_key_enter_variants_confirm(void)
+{
+    const int keys[] = {' ', '\n', '\r', TEST_ENTER_KEY};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_CONFIRM);
+    }
+}
+
+static void test_difficulty_menu_command_from_key_escape_goes_back(void)
+{
+    ASSERT_EQ_INT(
+        difficulty_menu_command_from_key(TETONOR_KEY_ESCAPE, &menu_codes),
+        DIFFICULTY_COMMAND_BACK);
+    ASSERT_EQ_INT(
+        difficulty_menu_command_from_key(TEST_ESCAPE_LITERAL, &menu_codes),
+        DIFFICULTY_COMMAND_BACK);
+}
+
+static void
+test_difficulty_menu_command_from_key_unrelated_keys_are_ignored(void)
+{
+    const int keys[] = {'a',
+                        '1',
+                        '+',
+                        'x',
+                        0,
+                        TEST_ERR_KEY,
+                        TEST_BACKSPACE_KEY,
+                        TEST_LEFT_KEY,
+                        TEST_RIGHT_KEY,
+                        TEST_RESIZE_KEY};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+    }
+}
+
+static void
+test_difficulty_menu_command_from_key_unavailable_codes_never_match(void)
+{
+    ASSERT_EQ_INT(difficulty_menu_command_from_key(TETONOR_KEY_UNAVAILABLE,
+                                                   &unavailable_menu_codes),
+                  DIFFICULTY_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        difficulty_menu_command_from_key(TEST_UP_KEY, &unavailable_menu_codes),
+        DIFFICULTY_COMMAND_NONE);
+    ASSERT_EQ_INT(difficulty_menu_command_from_key(TEST_DOWN_KEY,
+                                                   &unavailable_menu_codes),
+                  DIFFICULTY_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        difficulty_menu_command_from_key(' ', &unavailable_menu_codes),
+        DIFFICULTY_COMMAND_CONFIRM);
+}
+
+static void test_difficulty_menu_keys_select_hard_then_confirm(void)
+{
+    const int keys[] = {TEST_DOWN_KEY, TEST_DOWN_KEY, TEST_ENTER_KEY};
+    DifficultyMenu menu;
+    init_difficulty_menu(&menu);
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        apply_difficulty_menu_command(
+            &menu, difficulty_menu_command_from_key(keys[i], &menu_codes));
+    }
+    ASSERT_EQ_INT(menu.status, DIFFICULTY_MENU_CONFIRMED);
+    ASSERT_EQ_INT(menu.selected, DIFFICULTY_HARD);
+}
+
+static void test_difficulty_menu_keys_escape_returns_without_starting(void)
+{
+    const int keys[] = {TEST_DOWN_KEY, TETONOR_KEY_ESCAPE};
+    DifficultyMenu menu;
+    init_difficulty_menu(&menu);
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        apply_difficulty_menu_command(
+            &menu, difficulty_menu_command_from_key(keys[i], &menu_codes));
+    }
+    ASSERT_EQ_INT(menu.status, DIFFICULTY_MENU_CANCELLED);
+}
+
+static void test_difficulty_menu_keys_enter_on_fresh_menu_starts_medium(void)
+{
+    DifficultyMenu menu;
+    init_difficulty_menu(&menu);
+    apply_difficulty_menu_command(
+        &menu, difficulty_menu_command_from_key(' ', &menu_codes));
+    ASSERT_EQ_INT(menu.status, DIFFICULTY_MENU_CONFIRMED);
+    ASSERT_EQ_INT(menu.selected, DIFFICULTY_MEDIUM);
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -342,5 +452,14 @@ int main(void)
     RUN_TEST(
         test_board_command_from_key_unavailable_vertical_codes_never_match);
     RUN_TEST(test_board_command_from_key_available_codes_still_work);
+    RUN_TEST(test_difficulty_menu_command_from_key_arrows_move);
+    RUN_TEST(test_difficulty_menu_command_from_key_enter_variants_confirm);
+    RUN_TEST(test_difficulty_menu_command_from_key_escape_goes_back);
+    RUN_TEST(test_difficulty_menu_command_from_key_unrelated_keys_are_ignored);
+    RUN_TEST(
+        test_difficulty_menu_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(test_difficulty_menu_keys_select_hard_then_confirm);
+    RUN_TEST(test_difficulty_menu_keys_escape_returns_without_starting);
+    RUN_TEST(test_difficulty_menu_keys_enter_on_fresh_menu_starts_medium);
     return test_harness_result();
 }

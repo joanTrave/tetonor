@@ -450,10 +450,10 @@ void test_generation(void)
 Example code after:
 
 ```c
-static void test_generate_random_numbers_hides_difficulty_plus_four_numbers(void)
+static void test_generate_random_numbers_hides_eight_numbers_on_medium(void)
 {
     srand(42);
-    NumberGeneration* ng = generate_random_numbers(1);
+    NumberGeneration* ng = generate_random_numbers(DIFFICULTY_MEDIUM);
     ASSERT_NOT_NULL(ng);
 
     int hidden = 0;
@@ -464,7 +464,7 @@ static void test_generate_random_numbers_hides_difficulty_plus_four_numbers(void
             hidden++;
         }
     }
-    ASSERT_EQ_INT(hidden, 1 + 4);
+    ASSERT_EQ_INT(hidden, 8);
 
     free_number_generation(ng);
 }

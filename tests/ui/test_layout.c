@@ -345,6 +345,50 @@ static void test_layout_enlarge_message_names_the_minimum_size(void)
                 0);
 }
 
+static void test_layout_difficulty_option_rows_follow_levels(void)
+{
+    ASSERT_EQ_INT(layout_difficulty_option_row(DIFFICULTY_EASY), 3);
+    ASSERT_EQ_INT(layout_difficulty_option_row(DIFFICULTY_MEDIUM), 4);
+    ASSERT_EQ_INT(layout_difficulty_option_row(DIFFICULTY_HARD), 5);
+}
+
+static void test_layout_difficulty_menu_fits_minimum_terminal(void)
+{
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_MENU_H <= LAYOUT_MIN_ROWS);
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_MENU_W <= LAYOUT_MIN_COLS);
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_TITLE_ROW <
+                layout_difficulty_option_row(DIFFICULTY_EASY));
+    ASSERT_TRUE(layout_difficulty_option_row(DIFFICULTY_HARD) <
+                LAYOUT_DIFFICULTY_CHOOSE_ROW);
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_CHOOSE_ROW < LAYOUT_DIFFICULTY_BACK_ROW);
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_BACK_ROW < LAYOUT_DIFFICULTY_MENU_H - 1);
+}
+
+static void test_layout_difficulty_title_row_is_below_the_top_border(void)
+{
+    ASSERT_TRUE(LAYOUT_DIFFICULTY_TITLE_ROW >= 1);
+}
+
+static void test_layout_difficulty_hints_fit_window_width(void)
+{
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL +
+                    (int)strlen("UP/DOWN to choose, SPACE or ENTER to start") <=
+                LAYOUT_DIFFICULTY_MENU_W - 1);
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL + (int)strlen("Press ESC to go back") <=
+                LAYOUT_DIFFICULTY_MENU_W - 1);
+}
+
+static void test_layout_difficulty_menu_centres_on_the_minimum_terminal(void)
+{
+    LayoutPoint origin = layout_centered_window_origin(
+        LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS, LAYOUT_DIFFICULTY_MENU_H,
+        LAYOUT_DIFFICULTY_MENU_W);
+    ASSERT_TRUE(origin.y >= 0);
+    ASSERT_TRUE(origin.x >= 0);
+    ASSERT_TRUE(origin.y + LAYOUT_DIFFICULTY_MENU_H <= LAYOUT_MIN_ROWS);
+    ASSERT_TRUE(origin.x + LAYOUT_DIFFICULTY_MENU_W <= LAYOUT_MIN_COLS);
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -385,5 +429,10 @@ int main(void)
     RUN_TEST(test_layout_fits_rejects_the_former_minimum_height);
     RUN_TEST(test_layout_fits_rejects_degenerate_sizes);
     RUN_TEST(test_layout_enlarge_message_names_the_minimum_size);
+    RUN_TEST(test_layout_difficulty_option_rows_follow_levels);
+    RUN_TEST(test_layout_difficulty_menu_fits_minimum_terminal);
+    RUN_TEST(test_layout_difficulty_title_row_is_below_the_top_border);
+    RUN_TEST(test_layout_difficulty_hints_fit_window_width);
+    RUN_TEST(test_layout_difficulty_menu_centres_on_the_minimum_terminal);
     return test_harness_result();
 }
