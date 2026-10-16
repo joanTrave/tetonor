@@ -6,11 +6,11 @@
 #include "board.h"
 #include "number_generation.h"
 
-#define TETONOR_DEFAULT_DIFFICULTY 1
+#define TETONOR_DEFAULT_DIFFICULTY DIFFICULTY_MEDIUM
 
 typedef struct
 {
-    int difficulty;
+    int difficulty; /* a Difficulty; fixed for one game, restart reuses it */
 
     /* Number generation related functions */
     NumberGeneration* (*generate_random_numbers_f)(int difficulty);

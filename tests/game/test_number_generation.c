@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,10 +10,11 @@
 #define TEST_VALUE_COUNT (TETONOR_MAX_VALUE - TETONOR_MIN_VALUE + 1)
 #define TEST_SEED 42
 #define TEST_SEED_COUNT 50
-#define TEST_DEFAULT_DIFFICULTY 1
+#define TEST_DEFAULT_DIFFICULTY DIFFICULTY_MEDIUM
 #define TEST_LARGE_DIFFICULTY 100
 #define TEST_VERY_NEGATIVE_DIFFICULTY (-100)
-#define TEST_NO_MASK_DIFFICULTY (-TETONOR_HIDDEN_BASE_COUNT)
+#define TEST_LEVEL_COUNT 3
+#define TEST_MIN_OPERAND 1
 #define TEST_MAX_CELL_VALUE (TETONOR_MAX_VALUE * TETONOR_MAX_VALUE)
 
 static int count_hidden(const NumberGeneration* number_generation)
@@ -33,10 +35,15 @@ static int is_in_value_range(int value)
     return value >= TETONOR_MIN_VALUE && value <= TETONOR_MAX_VALUE;
 }
 
-static int is_derivable_from_pair(const NumberGeneration* number_generation,
-                                  int value)
+/* Literal expectations on purpose: reading them back from the profile table
+ * would make the tests circular. */
+static const Difficulty test_levels[TEST_LEVEL_COUNT] = {
+    DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD};
+static const int test_hidden_counts[TEST_LEVEL_COUNT] = {4, 8, 12};
+static const int test_max_operands[TEST_LEVEL_COUNT]  = {12, 20, 29};
+
+static int is_derivable_from_pair(const int* numbers, int value)
 {
-    const int* numbers = number_generation->available_array;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
         for (int j = 0; j < TETONOR_CELL_COUNT; j++)
@@ -108,87 +115,393 @@ static void test_generate_random_numbers_visible_values_sorted_ascending(void)
     }
 }
 
-static void
-test_generate_random_numbers_hides_between_one_and_difficulty_plus_base(void)
+static void test_generate_random_numbers_hides_exact_count_per_level(void)
 {
-    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
     {
-        srand(seed);
-        NumberGeneration* number_generation =
-            generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
-        ASSERT_NOT_NULL(number_generation);
-        int hidden = count_hidden(number_generation);
-        free_number_generation(number_generation);
-        ASSERT_TRUE(hidden >= 1);
-        ASSERT_TRUE(hidden <=
-                    TEST_DEFAULT_DIFFICULTY + TETONOR_HIDDEN_BASE_COUNT);
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            int hidden = count_hidden(number_generation);
+            free_number_generation(number_generation);
+            ASSERT_EQ_INT(hidden, test_hidden_counts[level]);
+        }
     }
 }
 
-static void
-test_generate_random_numbers_hides_nothing_when_mask_count_not_positive(void)
+static void test_generate_random_numbers_negative_difficulty_acts_as_easy(void)
 {
-    const int difficulties[] = {TEST_NO_MASK_DIFFICULTY,
-                                TEST_VERY_NEGATIVE_DIFFICULTY};
+    const int difficulties[] = {-1, TEST_VERY_NEGATIVE_DIFFICULTY, INT_MIN};
     for (size_t d = 0; d < sizeof difficulties / sizeof difficulties[0]; d++)
     {
         srand(TEST_SEED);
-        NumberGeneration* number_generation =
-            generate_random_numbers(difficulties[d]);
-        ASSERT_NOT_NULL(number_generation);
-        int hidden = count_hidden(number_generation);
-        free_number_generation(number_generation);
-        ASSERT_EQ_INT(hidden, 0);
+        NumberGeneration* easy = generate_random_numbers(DIFFICULTY_EASY);
+        srand(TEST_SEED);
+        NumberGeneration* clamped = generate_random_numbers(difficulties[d]);
+        bool generated            = easy != NULL && clamped != NULL;
+        bool equal = generated && memcmp(easy, clamped, sizeof *easy) == 0;
+        int hidden = generated ? count_hidden(clamped) : 0;
+        free_number_generation(easy);
+        free_number_generation(clamped);
+        ASSERT_TRUE(generated);
+        ASSERT_TRUE(equal);
+        ASSERT_EQ_INT(hidden, test_hidden_counts[0]);
     }
 }
 
 static void test_generate_random_numbers_large_difficulty_stays_in_bounds(void)
 {
-    srand(TEST_SEED);
-    NumberGeneration* number_generation =
-        generate_random_numbers(TEST_LARGE_DIFFICULTY);
-    ASSERT_NOT_NULL(number_generation);
-    int hidden       = count_hidden(number_generation);
-    int values_valid = 1;
-    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    const int difficulties[] = {TEST_LARGE_DIFFICULTY, DIFFICULTY_COUNT,
+                                INT_MAX};
+    for (size_t d = 0; d < sizeof difficulties / sizeof difficulties[0]; d++)
     {
-        int value = number_generation->available_array[i];
-        if (value != TETONOR_HIDDEN_NUMBER && !is_in_value_range(value))
+        srand(TEST_SEED);
+        NumberGeneration* hard = generate_random_numbers(DIFFICULTY_HARD);
+        srand(TEST_SEED);
+        NumberGeneration* clamped = generate_random_numbers(difficulties[d]);
+        bool generated            = hard != NULL && clamped != NULL;
+        bool equal = generated && memcmp(hard, clamped, sizeof *hard) == 0;
+        int hidden = generated ? count_hidden(clamped) : 0;
+        bool values_valid = generated;
+        for (int i = 0; generated && i < TETONOR_CELL_COUNT; i++)
         {
-            values_valid = 0;
+            int value = clamped->solution_array[i];
+            if (value < TEST_MIN_OPERAND || value > test_max_operands[2])
+            {
+                values_valid = false;
+            }
         }
+        free_number_generation(hard);
+        free_number_generation(clamped);
+        ASSERT_TRUE(generated);
+        ASSERT_TRUE(equal);
+        ASSERT_EQ_INT(hidden, test_hidden_counts[2]);
+        ASSERT_TRUE(values_valid);
     }
-    free_number_generation(number_generation);
-    ASSERT_TRUE(hidden >= 1);
-    ASSERT_TRUE(hidden <= TETONOR_CELL_COUNT);
-    ASSERT_TRUE(values_valid);
 }
 
 static void
-test_generate_random_numbers_board_cells_derivable_from_available_pairs(void)
+test_generate_random_numbers_board_cells_derivable_from_solution_pairs(void)
 {
-    for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
     {
-        srand(seed);
-        NumberGeneration* number_generation =
-            generate_random_numbers(TEST_NO_MASK_DIFFICULTY);
-        ASSERT_NOT_NULL(number_generation);
-        int hidden        = count_hidden(number_generation);
-        int all_derivable = 1;
-        for (int row = 0; row < TETONOR_GRID_SIZE; row++)
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
         {
-            for (int col = 0; col < TETONOR_GRID_SIZE; col++)
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            int all_derivable = 1;
+            for (int row = 0; row < TETONOR_GRID_SIZE; row++)
             {
-                int cell = number_generation->sum_matrix[row][col];
-                if (!is_derivable_from_pair(number_generation, cell))
+                for (int col = 0; col < TETONOR_GRID_SIZE; col++)
                 {
-                    all_derivable = 0;
+                    int cell = number_generation->sum_matrix[row][col];
+                    if (!is_derivable_from_pair(
+                            number_generation->solution_array, cell))
+                    {
+                        all_derivable = 0;
+                    }
                 }
             }
+            free_number_generation(number_generation);
+            ASSERT_TRUE(all_derivable);
         }
+    }
+}
+
+static void test_get_difficulty_profile_pins_each_level(void)
+{
+    const DifficultyProfile easy   = get_difficulty_profile(DIFFICULTY_EASY);
+    const DifficultyProfile medium = get_difficulty_profile(DIFFICULTY_MEDIUM);
+    const DifficultyProfile hard   = get_difficulty_profile(DIFFICULTY_HARD);
+    ASSERT_EQ_INT(easy.min_value, 1);
+    ASSERT_EQ_INT(easy.max_value, 12);
+    ASSERT_EQ_INT(easy.fully_hidden_pairs, 0);
+    ASSERT_EQ_INT(easy.half_hidden_pairs, 4);
+    ASSERT_EQ_INT(medium.min_value, 1);
+    ASSERT_EQ_INT(medium.max_value, 20);
+    ASSERT_EQ_INT(medium.fully_hidden_pairs, 0);
+    ASSERT_EQ_INT(medium.half_hidden_pairs, 8);
+    ASSERT_EQ_INT(hard.min_value, 1);
+    ASSERT_EQ_INT(hard.max_value, 29);
+    ASSERT_EQ_INT(hard.fully_hidden_pairs, 4);
+    ASSERT_EQ_INT(hard.half_hidden_pairs, 4);
+}
+
+static void test_get_difficulty_profile_no_level_allows_zero(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        DifficultyProfile profile = get_difficulty_profile(test_levels[level]);
+        ASSERT_EQ_INT(profile.min_value, TEST_MIN_OPERAND);
+        ASSERT_TRUE(profile.min_value > TETONOR_MIN_VALUE);
+    }
+}
+
+static bool profile_equals(DifficultyProfile first, DifficultyProfile second)
+{
+    return first.min_value == second.min_value &&
+           first.max_value == second.max_value &&
+           first.fully_hidden_pairs == second.fully_hidden_pairs &&
+           first.half_hidden_pairs == second.half_hidden_pairs;
+}
+
+static void test_get_difficulty_profile_clamps_out_of_range(void)
+{
+    const int below[] = {-1, TEST_VERY_NEGATIVE_DIFFICULTY, INT_MIN};
+    const int above[] = {DIFFICULTY_COUNT, TEST_LARGE_DIFFICULTY, INT_MAX};
+    const DifficultyProfile easy = get_difficulty_profile(DIFFICULTY_EASY);
+    const DifficultyProfile hard = get_difficulty_profile(DIFFICULTY_HARD);
+    for (size_t i = 0; i < sizeof below / sizeof below[0]; i++)
+    {
+        ASSERT_TRUE(profile_equals(get_difficulty_profile(below[i]), easy));
+        ASSERT_TRUE(profile_equals(get_difficulty_profile(above[i]), hard));
+    }
+}
+
+static void test_get_difficulty_profile_ranges_inside_global_range(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        DifficultyProfile profile = get_difficulty_profile(test_levels[level]);
+        ASSERT_TRUE(profile.min_value >= TETONOR_MIN_VALUE);
+        ASSERT_TRUE(profile.min_value <= profile.max_value);
+        ASSERT_TRUE(profile.max_value <= TETONOR_MAX_VALUE);
+        ASSERT_TRUE(profile.fully_hidden_pairs >= 0);
+        ASSERT_TRUE(profile.half_hidden_pairs >= 0);
+        ASSERT_TRUE(profile.fully_hidden_pairs + profile.half_hidden_pairs <=
+                    TETONOR_PAIR_COUNT);
+    }
+}
+
+static void test_difficulty_levels_strictly_increase_hidden_and_range(void)
+{
+    int hidden[TEST_LEVEL_COUNT];
+    int observed_max[TEST_LEVEL_COUNT];
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        observed_max[level] = 0;
+        srand(TEST_SEED);
+        NumberGeneration* first = generate_random_numbers(test_levels[level]);
+        ASSERT_NOT_NULL(first);
+        hidden[level] = count_hidden(first);
+        free_number_generation(first);
+        /* The largest value over all seeds: a single puzzle may stay below
+         * the bound by chance, fifty of them practically cannot. */
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+            {
+                if (number_generation->solution_array[i] > observed_max[level])
+                {
+                    observed_max[level] = number_generation->solution_array[i];
+                }
+            }
+            free_number_generation(number_generation);
+        }
+    }
+    ASSERT_TRUE(hidden[0] < hidden[1]);
+    ASSERT_TRUE(hidden[1] < hidden[2]);
+    ASSERT_TRUE(observed_max[0] <= test_max_operands[0]);
+    ASSERT_TRUE(observed_max[1] > test_max_operands[0]);
+    ASSERT_TRUE(observed_max[1] <= test_max_operands[1]);
+    ASSERT_TRUE(observed_max[2] > test_max_operands[1]);
+    ASSERT_TRUE(observed_max[2] <= test_max_operands[2]);
+}
+
+static void test_generate_random_numbers_levels_differ_for_same_seed(void)
+{
+    int hidden[TEST_LEVEL_COUNT];
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        srand(TEST_SEED);
+        NumberGeneration* number_generation =
+            generate_random_numbers(test_levels[level]);
+        ASSERT_NOT_NULL(number_generation);
+        hidden[level] = count_hidden(number_generation);
         free_number_generation(number_generation);
-        ASSERT_EQ_INT(hidden, 0);
-        ASSERT_TRUE(all_derivable);
+    }
+    ASSERT_TRUE(hidden[0] != hidden[1]);
+    ASSERT_TRUE(hidden[1] != hidden[2]);
+    ASSERT_TRUE(hidden[0] != hidden[2]);
+}
+
+static void test_generate_random_numbers_is_deterministic_per_level(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        srand(TEST_SEED);
+        NumberGeneration* first = generate_random_numbers(test_levels[level]);
+        srand(TEST_SEED);
+        NumberGeneration* second = generate_random_numbers(test_levels[level]);
+        bool both_generated      = first != NULL && second != NULL;
+        bool equal =
+            both_generated && memcmp(first, second, sizeof *first) == 0;
+        free_number_generation(first);
+        free_number_generation(second);
+        ASSERT_TRUE(both_generated);
+        ASSERT_TRUE(equal);
+    }
+}
+
+static void test_generate_random_numbers_values_within_level_range(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            bool in_range = true;
+            for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+            {
+                int value = number_generation->solution_array[i];
+                if (value < TEST_MIN_OPERAND ||
+                    value > test_max_operands[level])
+                {
+                    in_range = false;
+                }
+            }
+            free_number_generation(number_generation);
+            ASSERT_TRUE(in_range);
+        }
+    }
+}
+
+static void test_generate_random_numbers_no_zero_cells(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            bool cells_valid = true;
+            for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+            {
+                int value =
+                    number_generation->sum_matrix[cell / TETONOR_GRID_SIZE]
+                                                 [cell % TETONOR_GRID_SIZE];
+                bool is_sum =
+                    number_generation->solution_groups[cell].operation ==
+                    GROUP_OPERATION_ADD;
+                /* Operands are at least 1: the smallest sum is 1 + 1 and the
+                 * smallest product is 1 * 1. */
+                if (value < (is_sum ? 2 : 1))
+                {
+                    cells_valid = false;
+                }
+            }
+            free_number_generation(number_generation);
+            ASSERT_TRUE(cells_valid);
+        }
+    }
+}
+
+static int count_cells_with_value(const NumberGeneration* number_generation,
+                                  int value)
+{
+    int count = 0;
+    for (int row = 0; row < TETONOR_GRID_SIZE; row++)
+    {
+        for (int col = 0; col < TETONOR_GRID_SIZE; col++)
+        {
+            if (number_generation->sum_matrix[row][col] == value)
+            {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+/* A hidden value is anchored by a visible one when their sum and product both
+ * sit in the matrix, in two different cells (so two cells when they are equal).
+ */
+static bool is_anchored(const NumberGeneration* number_generation, int hidden)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        int visible = number_generation->available_array[i];
+        if (visible == TETONOR_HIDDEN_NUMBER)
+        {
+            continue;
+        }
+        int sum     = visible + hidden;
+        int product = visible * hidden;
+        int needed  = sum == product ? 2 : 1;
+        if (count_cells_with_value(number_generation, sum) >= needed &&
+            count_cells_with_value(number_generation, product) >= needed)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+test_generate_random_numbers_easy_and_medium_hidden_entries_anchored(void)
+{
+    for (int level = 0; level < 2; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            bool all_anchored = true;
+            for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+            {
+                if (number_generation->available_array[i] ==
+                        TETONOR_HIDDEN_NUMBER &&
+                    !is_anchored(number_generation,
+                                 number_generation->solution_array[i]))
+                {
+                    all_anchored = false;
+                }
+            }
+            free_number_generation(number_generation);
+            ASSERT_TRUE(all_anchored);
+        }
+    }
+}
+
+static void test_generate_random_numbers_hidden_entries_only_hidden_marker(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* number_generation =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(number_generation);
+            bool only_marker = true;
+            for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+            {
+                int visible = number_generation->available_array[i];
+                if (visible != TETONOR_HIDDEN_NUMBER &&
+                    visible != number_generation->solution_array[i])
+                {
+                    only_marker = false;
+                }
+            }
+            free_number_generation(number_generation);
+            ASSERT_TRUE(only_marker);
+        }
     }
 }
 
@@ -477,7 +790,8 @@ static void test_generate_random_numbers_operands_are_solution_twice(void)
 static void
 test_generate_random_numbers_solution_groups_independent_of_mask(void)
 {
-    const int difficulties[] = {TEST_NO_MASK_DIFFICULTY, TEST_LARGE_DIFFICULTY};
+    const int difficulties[] = {DIFFICULTY_EASY, DIFFICULTY_MEDIUM,
+                                DIFFICULTY_HARD, TEST_LARGE_DIFFICULTY};
     for (size_t d = 0; d < sizeof difficulties / sizeof difficulties[0]; d++)
     {
         srand(TEST_SEED);
@@ -491,18 +805,78 @@ test_generate_random_numbers_solution_groups_independent_of_mask(void)
     }
 }
 
+static bool strip_is_sorted(const int* strip)
+{
+    int previous = TETONOR_MIN_VALUE;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (strip[i] == TETONOR_HIDDEN_NUMBER)
+        {
+            continue;
+        }
+        if (strip[i] < previous)
+        {
+            return false;
+        }
+        previous = strip[i];
+    }
+    return true;
+}
+
+static bool
+groups_are_valid_operand_groups(const NumberGeneration* number_generation)
+{
+    for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+    {
+        if (!is_operand_group_valid(&number_generation->solution_groups[cell],
+                                    cell_value(number_generation, cell)))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void test_generate_random_numbers_valid_per_level(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* puzzle =
+                generate_random_numbers(test_levels[level]);
+            ASSERT_NOT_NULL(puzzle);
+            bool sorted     = strip_is_sorted(puzzle->solution_array) &&
+                              strip_is_sorted(puzzle->available_array);
+            bool decomposes = solution_groups_decompose_their_cells(puzzle);
+            bool valid      = groups_are_valid_operand_groups(puzzle);
+            int added       = count_operation(puzzle, GROUP_OPERATION_ADD);
+            int multiplied  = count_operation(puzzle, GROUP_OPERATION_MULTIPLY);
+            bool balanced   = solution_pairs_are_balanced(puzzle);
+            bool twice      = solution_operands_are_the_solution_twice(puzzle);
+            free_number_generation(puzzle);
+            ASSERT_TRUE(sorted);
+            ASSERT_TRUE(decomposes);
+            ASSERT_TRUE(valid);
+            ASSERT_EQ_INT(added, TETONOR_PAIR_COUNT);
+            ASSERT_EQ_INT(multiplied, TETONOR_PAIR_COUNT);
+            ASSERT_TRUE(balanced);
+            ASSERT_TRUE(twice);
+        }
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_generate_random_numbers_returns_non_null);
     RUN_TEST(test_generate_random_numbers_available_values_within_range);
     RUN_TEST(test_generate_random_numbers_visible_values_sorted_ascending);
-    RUN_TEST(
-        test_generate_random_numbers_hides_between_one_and_difficulty_plus_base);
-    RUN_TEST(
-        test_generate_random_numbers_hides_nothing_when_mask_count_not_positive);
+    RUN_TEST(test_generate_random_numbers_hides_exact_count_per_level);
+    RUN_TEST(test_generate_random_numbers_negative_difficulty_acts_as_easy);
     RUN_TEST(test_generate_random_numbers_large_difficulty_stays_in_bounds);
     RUN_TEST(
-        test_generate_random_numbers_board_cells_derivable_from_available_pairs);
+        test_generate_random_numbers_board_cells_derivable_from_solution_pairs);
     RUN_TEST(test_generate_random_numbers_board_values_within_range);
     RUN_TEST(test_generate_random_numbers_is_deterministic_for_fixed_seed);
     RUN_TEST(test_free_number_generation_accepts_null);
@@ -515,5 +889,18 @@ int main(void)
     RUN_TEST(test_generate_random_numbers_solution_pairs_are_balanced);
     RUN_TEST(test_generate_random_numbers_operands_are_solution_twice);
     RUN_TEST(test_generate_random_numbers_solution_groups_independent_of_mask);
+    RUN_TEST(test_generate_random_numbers_valid_per_level);
+    RUN_TEST(test_get_difficulty_profile_pins_each_level);
+    RUN_TEST(test_get_difficulty_profile_no_level_allows_zero);
+    RUN_TEST(test_get_difficulty_profile_clamps_out_of_range);
+    RUN_TEST(test_get_difficulty_profile_ranges_inside_global_range);
+    RUN_TEST(test_difficulty_levels_strictly_increase_hidden_and_range);
+    RUN_TEST(test_generate_random_numbers_levels_differ_for_same_seed);
+    RUN_TEST(test_generate_random_numbers_is_deterministic_per_level);
+    RUN_TEST(test_generate_random_numbers_values_within_level_range);
+    RUN_TEST(test_generate_random_numbers_no_zero_cells);
+    RUN_TEST(
+        test_generate_random_numbers_easy_and_medium_hidden_entries_anchored);
+    RUN_TEST(test_generate_random_numbers_hidden_entries_only_hidden_marker);
     return test_harness_result();
 }

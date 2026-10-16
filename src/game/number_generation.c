@@ -1,34 +1,72 @@
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 
 #include "number_generation.h"
 
-static void populate_numbers(NumberGeneration* number_generation);
-static void sort_available_array(NumberGeneration* number_generation);
+/* One row per Difficulty. Every range starts at 1, so no level generates 0.
+ * The levels are ordered by structure (hidden entries, both-hidden pairs,
+ * operand range), not by a measured human difficulty. */
+static const DifficultyProfile difficulty_profiles[DIFFICULTY_COUNT] = {
+    /* 4 hidden entries, each with a visible partner; small numbers. */
+    [DIFFICULTY_EASY] = {1, 12, 0, 4},
+    /* 8 hidden entries, each with a visible partner. */
+    [DIFFICULTY_MEDIUM] = {1, 20, 0, 8},
+    /* 12 hidden entries: 4 pairs have both values hidden; large numbers. */
+    [DIFFICULTY_HARD] = {1, 29, 4, 4},
+};
+
+static int clamp_difficulty(int difficulty);
+static void populate_numbers(NumberGeneration* number_generation,
+                             const DifficultyProfile* profile, bool hidden[]);
+static void mark_hidden_members(bool hidden[], const int positions[],
+                                const DifficultyProfile* profile);
+static void sort_available_array(NumberGeneration* number_generation,
+                                 bool hidden[]);
 static void store_solution(NumberGeneration* number_generation);
 static void mask_available_array(NumberGeneration* number_generation,
-                                 int difficulty);
+                                 const bool hidden[]);
 static void fill_shuffled_positions(int positions[], size_t count);
 static void swap_ints(int* a, int* b);
-static int random_value(void);
+static int random_value(const DifficultyProfile* profile);
+
+DifficultyProfile get_difficulty_profile(int difficulty)
+{
+    return difficulty_profiles[clamp_difficulty(difficulty)];
+}
 
 NumberGeneration* generate_random_numbers(int difficulty)
 {
+    DifficultyProfile profile           = get_difficulty_profile(difficulty);
     NumberGeneration* number_generation = calloc(1, sizeof *number_generation);
     if (number_generation == NULL)
     {
         return NULL;
     }
-    populate_numbers(number_generation);
-    sort_available_array(number_generation);
+    bool hidden[TETONOR_CELL_COUNT] = {false};
+    populate_numbers(number_generation, &profile, hidden);
+    sort_available_array(number_generation, hidden);
     store_solution(number_generation);
-    mask_available_array(number_generation, difficulty);
+    mask_available_array(number_generation, hidden);
     return number_generation;
 }
 
 void free_number_generation(NumberGeneration* number_generation)
 {
     free(number_generation);
+}
+
+static int clamp_difficulty(int difficulty)
+{
+    if (difficulty < DIFFICULTY_EASY)
+    {
+        return DIFFICULTY_EASY;
+    }
+    if (difficulty > DIFFICULTY_HARD)
+    {
+        return DIFFICULTY_HARD;
+    }
+    return difficulty;
 }
 
 static void set_available_value(NumberGeneration* number_generation,
@@ -55,7 +93,8 @@ static void set_solution_group(NumberGeneration* number_generation, int cell,
     group->greater      = value_1 < value_2 ? value_2 : value_1;
 }
 
-static void populate_numbers(NumberGeneration* number_generation)
+static void populate_numbers(NumberGeneration* number_generation,
+                             const DifficultyProfile* profile, bool hidden[])
 {
     int positions[TETONOR_CELL_COUNT];
     int sum_matrix_positions[TETONOR_CELL_COUNT];
@@ -67,8 +106,8 @@ static void populate_numbers(NumberGeneration* number_generation)
      * product. */
     for (int i = 0; i < TETONOR_PAIR_COUNT; i++)
     {
-        int value_1 = random_value();
-        int value_2 = random_value();
+        int value_1 = random_value(profile);
+        int value_2 = random_value(profile);
         set_available_value(number_generation, positions[2 * i], value_1);
         set_available_value(number_generation, positions[2 * i + 1], value_2);
         int sum_cell     = sum_matrix_positions[2 * i];
@@ -80,9 +119,29 @@ static void populate_numbers(NumberGeneration* number_generation)
         set_solution_group(number_generation, product_cell, value_1, value_2,
                            GROUP_OPERATION_MULTIPLY);
     }
+    mark_hidden_members(hidden, positions, profile);
 }
 
-static void sort_available_array(NumberGeneration* number_generation)
+/* Pair values are independent and the positions are a uniform shuffle, so
+ * taking the first pairs and their first member is an unbiased choice that
+ * needs no extra rand() call. */
+static void mark_hidden_members(bool hidden[], const int positions[],
+                                const DifficultyProfile* profile)
+{
+    int hidden_pairs = profile->fully_hidden_pairs + profile->half_hidden_pairs;
+    for (int i = 0; i < hidden_pairs; i++)
+    {
+        hidden[positions[2 * i]] = true;
+        if (i < profile->fully_hidden_pairs)
+        {
+            hidden[positions[2 * i + 1]] = true;
+        }
+    }
+}
+
+/* Sorts the strip ascending; a hidden flag stays with its value. */
+static void sort_available_array(NumberGeneration* number_generation,
+                                 bool hidden[])
 {
     int* values = number_generation->available_array;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
@@ -92,19 +151,23 @@ static void sort_available_array(NumberGeneration* number_generation)
             if (values[i] > values[j])
             {
                 swap_ints(&values[i], &values[j]);
+                bool flag = hidden[i];
+                hidden[i] = hidden[j];
+                hidden[j] = flag;
             }
         }
     }
 }
 
 static void mask_available_array(NumberGeneration* number_generation,
-                                 int difficulty)
+                                 const bool hidden[])
 {
-    int masked_count = difficulty + TETONOR_HIDDEN_BASE_COUNT;
-    for (int i = 0; i < masked_count; i++)
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
-        int position = rand() % TETONOR_CELL_COUNT;
-        number_generation->available_array[position] = TETONOR_HIDDEN_NUMBER;
+        if (hidden[i])
+        {
+            number_generation->available_array[i] = TETONOR_HIDDEN_NUMBER;
+        }
     }
 }
 
@@ -128,9 +191,10 @@ static void swap_ints(int* a, int* b)
     *b       = temp;
 }
 
-static int random_value(void)
+static int random_value(const DifficultyProfile* profile)
 {
-    return TETONOR_MIN_VALUE + rand() % TETONOR_VALUE_COUNT;
+    int value_count = profile->max_value - profile->min_value + 1;
+    return profile->min_value + rand() % value_count;
 }
 
 static void store_solution(NumberGeneration* number_generation)

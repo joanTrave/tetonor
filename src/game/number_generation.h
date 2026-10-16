@@ -10,7 +10,27 @@
 #define TETONOR_MAX_VALUE 29
 #define TETONOR_VALUE_COUNT (TETONOR_MAX_VALUE - TETONOR_MIN_VALUE + 1)
 #define TETONOR_HIDDEN_NUMBER (-1)
-#define TETONOR_HIDDEN_BASE_COUNT 4
+
+/* Values of the difficulty passed to generate_random_numbers. */
+typedef enum
+{
+    DIFFICULTY_EASY,
+    DIFFICULTY_MEDIUM,
+    DIFFICULTY_HARD,
+    DIFFICULTY_COUNT /* number of levels, not a level */
+} Difficulty;
+
+/* How a level shapes a puzzle. Easy and Medium hide at most one value per
+ * pair, so every hidden number has a visible partner; Hard hides both values
+ * of some pairs. Ranges stay inside TETONOR_MIN_VALUE..TETONOR_MAX_VALUE.
+ * These are structural guarantees, not a measured human difficulty. */
+typedef struct
+{
+    int min_value;          /* smallest value a pair may hold */
+    int max_value;          /* largest value a pair may hold */
+    int fully_hidden_pairs; /* pairs with both values hidden in the strip */
+    int half_hidden_pairs;  /* pairs with exactly one value hidden */
+} DifficultyProfile;
 
 typedef struct
 {
@@ -25,7 +45,12 @@ typedef struct
     OperandGroup solution_groups[TETONOR_CELL_COUNT];
 } NumberGeneration;
 
-/* Returns NULL on allocation failure. */
+/* Profile of a level. Values below DIFFICULTY_EASY act as Easy, values above
+ * DIFFICULTY_HARD act as Hard. */
+DifficultyProfile get_difficulty_profile(int difficulty);
+
+/* difficulty is a Difficulty, and other values are clamped as in
+ * get_difficulty_profile. Returns NULL on allocation failure. */
 NumberGeneration* generate_random_numbers(int difficulty);
 
 /* Accepts NULL. */

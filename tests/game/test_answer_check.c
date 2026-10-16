@@ -7,7 +7,7 @@
 #include "../../src/game/answer_check.h"
 
 #define TEST_SEED_COUNT 50
-#define TEST_DIFFICULTY 1
+#define TEST_DIFFICULTY DIFFICULTY_MEDIUM
 #define TEST_FIRST_HIDDEN 2
 #define TEST_SECOND_HIDDEN 5
 #define TEST_OUT_OF_RANGE_ABOVE (TETONOR_MAX_VALUE + 1)
@@ -378,6 +378,26 @@ static void test_is_answer_correct_generated_puzzle_solution_is_correct(void)
     }
 }
 
+static void
+test_is_answer_correct_generated_puzzle_solution_is_correct_per_level(void)
+{
+    const Difficulty levels[] = {DIFFICULTY_EASY, DIFFICULTY_MEDIUM,
+                                 DIFFICULTY_HARD};
+    for (size_t level = 0; level < sizeof levels / sizeof levels[0]; level++)
+    {
+        for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            srand(seed);
+            NumberGeneration* puzzle = generate_random_numbers(levels[level]);
+            ASSERT_NOT_NULL(puzzle);
+            bool correct = is_answer_correct(puzzle, puzzle->solution_array,
+                                             puzzle->solution_groups);
+            free_number_generation(puzzle);
+            ASSERT_TRUE(correct);
+        }
+    }
+}
+
 static void test_is_answer_correct_generated_puzzle_changed_group_is_wrong(void)
 {
     for (unsigned seed = 1; seed <= TEST_SEED_COUNT; seed++)
@@ -449,6 +469,8 @@ int main(void)
     RUN_TEST(test_is_answer_correct_rejects_unbalanced_pairs_in_f_d);
     RUN_TEST(test_is_answer_correct_ignores_the_generators_solution);
     RUN_TEST(test_is_answer_correct_generated_puzzle_solution_is_correct);
+    RUN_TEST(
+        test_is_answer_correct_generated_puzzle_solution_is_correct_per_level);
     RUN_TEST(test_is_answer_correct_generated_puzzle_changed_group_is_wrong);
     RUN_TEST(test_is_answer_correct_generated_puzzle_changed_entry_is_wrong);
     RUN_TEST(test_is_answer_correct_generated_puzzle_hidden_strip_is_wrong);

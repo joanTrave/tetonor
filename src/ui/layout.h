@@ -49,6 +49,12 @@
 #define LAYOUT_MENU_START_ROW 3
 #define LAYOUT_MENU_EXIT_ROW 4
 #define LAYOUT_MENU_TEXT_COL 2
+#define LAYOUT_DIFFICULTY_MENU_H 10
+#define LAYOUT_DIFFICULTY_MENU_W LAYOUT_MENU_W
+#define LAYOUT_DIFFICULTY_TITLE_ROW 1
+#define LAYOUT_DIFFICULTY_FIRST_OPTION_ROW 3
+#define LAYOUT_DIFFICULTY_CHOOSE_ROW 7
+#define LAYOUT_DIFFICULTY_BACK_ROW 8
 
 typedef struct
 {
@@ -61,6 +67,9 @@ int layout_centered_offset(int container_size, int content_size);
 
 LayoutPoint layout_centered_window_origin(int screen_rows, int screen_cols,
                                           int height, int width);
+
+/* Window row of a level's option line on the difficulty screen. */
+int layout_difficulty_option_row(int difficulty);
 
 /* Top-left corner of the block of the matrix cell at (row, col). */
 LayoutPoint layout_sum_cell_origin(int row, int col);

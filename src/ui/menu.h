@@ -8,8 +8,8 @@ typedef enum
     MENU_NONE /* key ignored */
 } MenuResult;
 
-/* Shows the start menu and runs the game. Returns EXIT_SUCCESS or
- * EXIT_FAILURE. */
+/* Shows the start menu, then the difficulty screen and a game, repeatedly,
+ * until ESC on the start menu. Returns EXIT_SUCCESS or EXIT_FAILURE. */
 int ui_show_start_menu(void);
 
 #endif

@@ -15,6 +15,8 @@
 #define TEST_NEW_HIDDEN_COUNT 3
 #define TEST_TYPED_VALUE 7
 #define TEST_MESSY_GROUP_CELL 5
+#define TEST_LEVEL_COUNT 3
+#define TEST_MEDIUM_HIDDEN_COUNT 8
 
 static const int fixture_old_hidden[TEST_OLD_HIDDEN_COUNT] = {2, 5, 6, 15};
 static const int fixture_new_hidden[TEST_NEW_HIDDEN_COUNT] = {0, 7, 9};
@@ -92,6 +94,7 @@ static void test_create_game_port_sets_default_difficulty(void)
     int difficulty = game_port->difficulty;
     destroy_game_port(game_port);
     ASSERT_EQ_INT(difficulty, TETONOR_DEFAULT_DIFFICULTY);
+    ASSERT_EQ_INT(TETONOR_DEFAULT_DIFFICULTY, DIFFICULTY_MEDIUM);
 }
 
 static void test_create_game_port_wires_number_generation_functions(void)
@@ -119,12 +122,10 @@ static void test_game_port_generates_and_frees_through_port(void)
         destroy_game_port(game_port);
         ASSERT_NOT_NULL(number_generation);
     }
-    int hidden     = count_hidden(number_generation);
-    int max_hidden = game_port->difficulty + TETONOR_HIDDEN_BASE_COUNT;
+    int hidden = count_hidden(number_generation);
     game_port->free_number_generation_f(number_generation);
     destroy_game_port(game_port);
-    ASSERT_TRUE(hidden >= 1);
-    ASSERT_TRUE(hidden <= max_hidden);
+    ASSERT_EQ_INT(hidden, TEST_MEDIUM_HIDDEN_COUNT);
 }
 
 static void test_destroy_game_port_accepts_null(void)
@@ -757,6 +758,122 @@ static void test_restart_game_with_real_port_replaces_puzzle(void)
     ASSERT_TRUE(hidden >= 1);
 }
 
+static const Difficulty test_levels[TEST_LEVEL_COUNT] = {
+    DIFFICULTY_EASY, DIFFICULTY_MEDIUM, DIFFICULTY_HARD};
+static const int test_hidden_counts[TEST_LEVEL_COUNT] = {4, 8, 12};
+
+static void test_game_port_difficulty_reaches_generation_per_level(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        game_port->difficulty    = test_levels[level];
+        NumberGeneration* puzzle = generate_through_port(game_port);
+        if (puzzle == NULL)
+        {
+            destroy_game_port(game_port);
+            ASSERT_NOT_NULL(puzzle);
+        }
+        int hidden = count_hidden(puzzle);
+        game_port->free_number_generation_f(puzzle);
+        if (hidden != test_hidden_counts[level])
+        {
+            destroy_game_port(game_port);
+            ASSERT_EQ_INT(hidden, test_hidden_counts[level]);
+        }
+    }
+    destroy_game_port(game_port);
+}
+
+static void test_game_port_board_session_is_correct_per_level(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        game_port->difficulty    = test_levels[level];
+        NumberGeneration* puzzle = generate_through_port(game_port);
+        if (puzzle == NULL)
+        {
+            destroy_game_port(game_port);
+            ASSERT_NOT_NULL(puzzle);
+        }
+        Board board;
+        game_port->init_board_f(&board, puzzle);
+        play_session(game_port, &board, puzzle, 0);
+        BoardResult result = board.result;
+        game_port->free_number_generation_f(puzzle);
+        if (result != BOARD_RESULT_CORRECT)
+        {
+            destroy_game_port(game_port);
+            ASSERT_EQ_INT(result, BOARD_RESULT_CORRECT);
+        }
+    }
+    destroy_game_port(game_port);
+}
+
+static void test_restart_game_keeps_selected_difficulty(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    game_port->difficulty = DIFFICULTY_HARD;
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    bool restarted     = restart_game(game_port, &board, &puzzle);
+    int generated_with = fake_generate_difficulty;
+    int kept           = game_port->difficulty;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_EQ_INT(generated_with, DIFFICULTY_HARD);
+    ASSERT_EQ_INT(kept, DIFFICULTY_HARD);
+}
+
+static void test_restart_game_with_real_port_keeps_level(void)
+{
+    const Difficulty levels[] = {DIFFICULTY_EASY, DIFFICULTY_HARD};
+    const int expected[]      = {4, 12};
+    for (size_t i = 0; i < sizeof levels / sizeof levels[0]; i++)
+    {
+        GamePort* game_port = create_game_port();
+        ASSERT_NOT_NULL(game_port);
+        game_port->difficulty    = levels[i];
+        NumberGeneration* puzzle = generate_through_port(game_port);
+        if (puzzle == NULL)
+        {
+            destroy_game_port(game_port);
+            ASSERT_NOT_NULL(puzzle);
+        }
+        Board board;
+        game_port->init_board_f(&board, puzzle);
+        bool restarted = restart_game(game_port, &board, &puzzle);
+        int hidden     = restarted ? count_hidden(puzzle) : 0;
+        game_port->free_number_generation_f(puzzle);
+        destroy_game_port(game_port);
+        ASSERT_TRUE(restarted);
+        ASSERT_EQ_INT(hidden, expected[i]);
+    }
+}
+
+static void test_create_game_port_does_not_inherit_previous_difficulty(void)
+{
+    GamePort* first = create_game_port();
+    ASSERT_NOT_NULL(first);
+    first->difficulty = DIFFICULTY_HARD;
+    destroy_game_port(first);
+    GamePort* second = create_game_port();
+    ASSERT_NOT_NULL(second);
+    int difficulty = second->difficulty;
+    destroy_game_port(second);
+    ASSERT_EQ_INT(difficulty, DIFFICULTY_MEDIUM);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -779,5 +896,10 @@ int main(void)
     RUN_TEST(test_restart_game_after_failure_can_restart_again);
     RUN_TEST(test_restart_game_twice_frees_each_old_puzzle_once);
     RUN_TEST(test_restart_game_with_real_port_replaces_puzzle);
+    RUN_TEST(test_game_port_difficulty_reaches_generation_per_level);
+    RUN_TEST(test_game_port_board_session_is_correct_per_level);
+    RUN_TEST(test_restart_game_keeps_selected_difficulty);
+    RUN_TEST(test_restart_game_with_real_port_keeps_level);
+    RUN_TEST(test_create_game_port_does_not_inherit_previous_difficulty);
     return test_harness_result();
 }
