@@ -7,7 +7,7 @@
 #include "style.h"
 
 static BoardKeyCodes board_key_codes(void);
-static void draw_board(const Board* board);
+static void draw_board(const Board* board, bool undo_notice);
 
 int ui_run(const GamePort* game_port)
 {
@@ -22,7 +22,7 @@ int ui_run(const GamePort* game_port)
     game_port->init_board_f(&board, number_generation);
     apply_palette_styles(&board.palette);
     BoardKeyCodes key_codes = board_key_codes();
-    draw_board(&board);
+    draw_board(&board, false);
 
     int key = getch();
     while (key != ERR)
@@ -31,6 +31,11 @@ int ui_run(const GamePort* game_port)
         if (command.kind == BOARD_COMMAND_EXIT)
         {
             break;
+        }
+        bool undo_notice = false;
+        if (command.kind == BOARD_COMMAND_UNDO)
+        {
+            undo_notice = !game_port->undo_board_move_f(&board);
         }
         if (command.kind == BOARD_COMMAND_INPUT)
         {
@@ -42,7 +47,7 @@ int ui_run(const GamePort* game_port)
                 apply_palette_styles(&board.palette);
             }
         }
-        draw_board(&board);
+        draw_board(&board, undo_notice);
         key = getch();
     }
 
@@ -83,9 +88,9 @@ static BoardKeyCodes board_key_codes(void)
     return key_codes;
 }
 
-static void draw_board(const Board* board)
+static void draw_board(const Board* board, bool undo_notice)
 {
     erase();
-    print_layout(board);
+    print_layout(board, undo_notice);
     refresh();
 }

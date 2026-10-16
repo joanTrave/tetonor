@@ -27,6 +27,13 @@ static void submit_answer(Board* board);
 static void judge_board(Board* board);
 static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
 static void refresh_slot_usages(Board* board);
+static void take_snapshot(const Board* board, BoardSnapshot* snapshot);
+static void restore_snapshot(Board* board, const BoardSnapshot* snapshot);
+static bool same_operand_group(const OperandGroup* a, const OperandGroup* b);
+static bool entries_changed(const Board* board, const BoardSnapshot* snapshot);
+static void clear_move_history(MoveHistory* history);
+static void push_move(MoveHistory* history, const BoardSnapshot* snapshot);
+static void pop_move(MoveHistory* history, BoardSnapshot* out);
 
 void init_board(Board* board, const NumberGeneration* puzzle)
 {
@@ -46,12 +53,15 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     board->focus  = board->cursor != TETONOR_NO_CURSOR ? BOARD_FOCUS_SLOT
                                                        : BOARD_FOCUS_GROUP;
     init_palette(&board->palette);
+    clear_move_history(&board->history);
     refresh_slot_usages(board);
 }
 
 BoardEvent apply_board_input(Board* board, BoardInput input)
 {
     BoardEvent event = BOARD_EVENT_NONE;
+    BoardSnapshot before;
+    take_snapshot(board, &before);
     switch (board->focus)
     {
         case BOARD_FOCUS_SLOT:
@@ -67,8 +77,25 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
             event = apply_restart_input(board, input);
             break;
     }
+    if (entries_changed(board, &before))
+    {
+        push_move(&board->history, &before);
+    }
     refresh_slot_usages(board);
     return event;
+}
+
+bool undo_board_move(Board* board)
+{
+    if (board->history.count == 0)
+    {
+        return false;
+    }
+    BoardSnapshot snapshot;
+    pop_move(&board->history, &snapshot);
+    restore_snapshot(board, &snapshot);
+    refresh_slot_usages(board);
+    return true;
 }
 
 static void apply_slot_input(Board* board, BoardInput input)
@@ -406,4 +433,69 @@ static void judge_board(Board* board)
     board->result = is_answer_correct(board->puzzle, strip, board->groups)
                         ? BOARD_RESULT_CORRECT
                         : BOARD_RESULT_WRONG;
+}
+
+static void take_snapshot(const Board* board, BoardSnapshot* snapshot)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        snapshot->slot_values[i] = board->slots[i].value;
+        snapshot->groups[i]      = board->groups[i];
+    }
+    snapshot->result = board->result;
+}
+
+static void restore_snapshot(Board* board, const BoardSnapshot* snapshot)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        board->slots[i].value = snapshot->slot_values[i];
+        board->groups[i]      = snapshot->groups[i];
+    }
+    board->result = snapshot->result;
+}
+
+static bool same_operand_group(const OperandGroup* a, const OperandGroup* b)
+{
+    return a->smaller == b->smaller && a->operation == b->operation &&
+           a->greater == b->greater;
+}
+
+/* Whether a slot value or a group box differs; the result is not compared. */
+static bool entries_changed(const Board* board, const BoardSnapshot* snapshot)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board->slots[i].value != snapshot->slot_values[i] ||
+            !same_operand_group(&board->groups[i], &snapshot->groups[i]))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void clear_move_history(MoveHistory* history)
+{
+    history->count  = 0;
+    history->newest = 0;
+}
+
+static void push_move(MoveHistory* history, const BoardSnapshot* snapshot)
+{
+    history->newest = (history->newest + 1) % TETONOR_UNDO_HISTORY_DEPTH;
+    history->entries[history->newest] = *snapshot;
+    if (history->count < TETONOR_UNDO_HISTORY_DEPTH)
+    {
+        history->count++;
+    }
+}
+
+/* The caller guarantees history->count > 0. */
+static void pop_move(MoveHistory* history, BoardSnapshot* out)
+{
+    *out            = history->entries[history->newest];
+    history->newest = (history->newest + TETONOR_UNDO_HISTORY_DEPTH - 1) %
+                      TETONOR_UNDO_HISTORY_DEPTH;
+    history->count--;
 }

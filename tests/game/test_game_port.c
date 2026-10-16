@@ -874,6 +874,108 @@ static void test_create_game_port_does_not_inherit_previous_difficulty(void)
     ASSERT_EQ_INT(difficulty, DIFFICULTY_MEDIUM);
 }
 
+static void test_create_game_port_wires_undo(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool undo_wired = game_port->undo_board_move_f == undo_board_move;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(undo_wired);
+}
+
+static void test_game_port_undo_through_port_reverts_move(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration puzzle;
+    build_fixture_puzzle(&puzzle, fixture_old_hidden, TEST_OLD_HIDDEN_COUNT);
+    Board board;
+    game_port->init_board_f(&board, &puzzle);
+    int first_slot = fixture_old_hidden[0];
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    int typed        = board.slots[first_slot].value;
+    bool undone      = game_port->undo_board_move_f(&board);
+    int reverted     = board.slots[first_slot].value;
+    bool undone_more = game_port->undo_board_move_f(&board);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(typed, TEST_TYPED_VALUE);
+    ASSERT_TRUE(undone);
+    ASSERT_EQ_INT(reverted, TETONOR_EMPTY_ENTRY);
+    ASSERT_FALSE(undone_more);
+}
+
+static void test_restart_game_empties_move_history(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    Board with_move  = board;
+    bool had_history = game_port->undo_board_move_f(&with_move);
+    bool restarted   = restart_game(game_port, &board, &puzzle);
+    bool undone      = game_port->undo_board_move_f(&board);
+    bool fresh       = board_is_fresh(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(had_history);
+    ASSERT_TRUE(restarted);
+    ASSERT_FALSE(undone);
+    ASSERT_TRUE(fresh);
+}
+
+static void test_restart_game_failure_keeps_move_history(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    int first_slot = fixture_old_hidden[0];
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    fake_generate_fails = true;
+    bool restarted      = restart_game(game_port, &board, &puzzle);
+    bool undone         = game_port->undo_board_move_f(&board);
+    int reverted        = board.slots[first_slot].value;
+    bool undone_more    = game_port->undo_board_move_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(restarted);
+    ASSERT_TRUE(undone);
+    ASSERT_EQ_INT(reverted, TETONOR_EMPTY_ENTRY);
+    ASSERT_FALSE(undone_more);
+}
+
+static void test_restart_game_with_real_port_empties_move_history(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle = generate_through_port(game_port);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    bool restarted = restart_game(game_port, &board, &puzzle);
+    bool undone    = game_port->undo_board_move_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_FALSE(undone);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -901,5 +1003,10 @@ int main(void)
     RUN_TEST(test_restart_game_keeps_selected_difficulty);
     RUN_TEST(test_restart_game_with_real_port_keeps_level);
     RUN_TEST(test_create_game_port_does_not_inherit_previous_difficulty);
+    RUN_TEST(test_create_game_port_wires_undo);
+    RUN_TEST(test_game_port_undo_through_port_reverts_move);
+    RUN_TEST(test_restart_game_empties_move_history);
+    RUN_TEST(test_restart_game_failure_keeps_move_history);
+    RUN_TEST(test_restart_game_with_real_port_empties_move_history);
     return test_harness_result();
 }

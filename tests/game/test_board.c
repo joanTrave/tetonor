@@ -2917,6 +2917,696 @@ static void test_apply_board_input_restart_up_up_returns_to_slot(void)
     ASSERT_EQ_INT(board.cursor, TEST_FIRST_SLOT);
 }
 
+#define TEST_UNDO_LOOP_LIMIT 100
+#define TEST_FILL_MOVE_COUNT 5 /* digits of 2, 5, 6 and 28 */
+#define TEST_OVERFLOW_MOVES (TETONOR_UNDO_HISTORY_DEPTH + 1)
+#define TEST_WRAP_MOVES 30
+#define TEST_REPEATED_WRAP_MOVES 50
+#define TEST_MIXED_MOVE_COUNT 5
+#define TEST_OTHER_DIGIT 3
+#define TEST_OVER_MAXIMUM_DIGIT 5
+
+/* Everything a move can change; focus, cursors, palette and history are left
+ * out on purpose. */
+static bool entries_equal(const Board* first, const Board* second)
+{
+    return slots_equal(first, second) &&
+           groups_equal(first->groups, second->groups) &&
+           first->result == second->result &&
+           memcmp(first->slot_usages, second->slot_usages,
+                  sizeof first->slot_usages) == 0;
+}
+
+static bool positions_equal(const Board* first, const Board* second)
+{
+    return first->cursor == second->cursor &&
+           first->group_cursor == second->group_cursor &&
+           first->group_field == second->group_field &&
+           first->focus == second->focus;
+}
+
+/* Bounded, so that a history that never runs out cannot hang the test. */
+static int count_undos(Board* board)
+{
+    int undone = 0;
+    while (undone < TEST_UNDO_LOOP_LIMIT && undo_board_move(board))
+    {
+        undone++;
+    }
+    return undone;
+}
+
+/* Types one digit into the index-th group number box, counting the smaller and
+ * the greater box of cell 0, then of cell 1, and so on. Every box starts empty,
+ * so each call changes the board; 32 boxes allow 32 distinct moves. */
+static void make_group_move(Board* board, int index)
+{
+    place_group_focus(board, index / TEST_NUMBER_FIELD_COUNT,
+                      fixture_number_fields[index % TEST_NUMBER_FIELD_COUNT]);
+    press_digit(board, index % TETONOR_DIGIT_BASE);
+}
+
+/* Alternates a typed digit and its deletion in the first editable slot, so
+ * that any number of moves can be made. */
+static void make_slot_edit(Board* board, int index)
+{
+    focus_slot(board, TEST_FIRST_SLOT);
+    if (index % 2 == 0)
+    {
+        press_digit(board, 1 + index % (TETONOR_DIGIT_BASE - 1));
+        return;
+    }
+    press(board, BOARD_INPUT_DELETE);
+}
+
+/* Every movement from every focus, and ACTIVATE on each focus of an incomplete
+ * board. */
+static void press_ignored_movements(Board* board)
+{
+    for (int f = 0; f < TEST_FOCUS_COUNT; f++)
+    {
+        for (int k = 0; k < TEST_MOVE_KIND_COUNT; k++)
+        {
+            board->focus = fixture_focuses[f];
+            press(board, fixture_move_kinds[k]);
+        }
+        board->focus = fixture_focuses[f];
+        press(board, BOARD_INPUT_ACTIVATE);
+    }
+}
+
+/* Edits that change nothing. Needs the second slot and the last group cell to
+ * be empty. */
+static void press_ignored_edits(Board* board)
+{
+    focus_slot(board, TEST_SECOND_SLOT);
+    press_digit(board, TEST_OUT_OF_RANGE_DIGIT);
+    press_digit(board, -1);
+    press(board, BOARD_INPUT_DELETE);
+    press_operation(board, GROUP_OPERATION_ADD);
+    place_group_focus(board, TEST_LAST_CELL, GROUP_FIELD_SMALLER);
+    press_digit(board, TEST_OUT_OF_RANGE_DIGIT);
+    press_digit(board, -1);
+    press(board, BOARD_INPUT_DELETE);
+    press_operation(board, GROUP_OPERATION_ADD);
+    place_group_focus(board, TEST_LAST_CELL, GROUP_FIELD_OPERATION);
+    press(board, BOARD_INPUT_DELETE);
+    press_operation(board, GROUP_OPERATION_NONE);
+    press_digit(board, TEST_OVER_MAXIMUM_DIGIT);
+}
+
+static void test_undo_board_move_history_depth_is_twenty(void)
+{
+    ASSERT_EQ_INT(TETONOR_UNDO_HISTORY_DEPTH, 20);
+}
+
+static void test_undo_board_move_on_fresh_board_reports_nothing(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board before = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void
+test_undo_board_move_on_fresh_board_without_slots_reports_nothing(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    Board before = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void test_undo_board_move_on_empty_history_leaves_usages_untouched(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    set_all_usages(&board, SLOT_USAGE_TWICE);
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_TWICE));
+}
+
+static void test_undo_board_move_on_exhausted_history_reports_nothing(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 7);
+    ASSERT_TRUE(undo_board_move(&board));
+    Board before = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void test_undo_board_move_reverts_typed_digit_in_slot(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board empty = board;
+    press_digit(&board, 7);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+    ASSERT_TRUE(entries_equal(&board, &empty));
+    press_digit(&board, 1);
+    Board one = board;
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 12);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 1);
+    ASSERT_TRUE(entries_equal(&board, &one));
+}
+
+static void test_undo_board_move_reverts_typed_digit_in_group_box(void)
+{
+    for (int f = 0; f < TEST_NUMBER_FIELD_COUNT; f++)
+    {
+        NumberGeneration puzzle;
+        Board board;
+        start_default_board(&puzzle, &board);
+        place_group_focus(&board, 6, fixture_number_fields[f]);
+        Board empty = board;
+        press_digit(&board, 7);
+        ASSERT_FALSE(all_groups_empty(&board));
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_TRUE(all_groups_empty(&board));
+        ASSERT_TRUE(entries_equal(&board, &empty));
+        press_digit(&board, 1);
+        Board one = board;
+        press_digit(&board, 2);
+        ASSERT_EQ_INT(group_number(&board, 6, fixture_number_fields[f]), 12);
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_EQ_INT(group_number(&board, 6, fixture_number_fields[f]), 1);
+        ASSERT_TRUE(entries_equal(&board, &one));
+    }
+}
+
+static void test_undo_board_move_reverts_replaced_leading_zero_to_zero(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 0);
+    press_digit(&board, 7);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 7);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 0);
+}
+
+static void test_undo_board_move_reverts_deleted_digit_in_slot(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    type_value(&board, 12);
+    Board typed = board;
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 1);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 12);
+    ASSERT_TRUE(entries_equal(&board, &typed));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(undo_board_move(&board));
+    press_digit(&board, 7);
+    typed = board;
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 7);
+    ASSERT_TRUE(entries_equal(&board, &typed));
+}
+
+static void test_undo_board_move_reverts_deleted_digit_in_group_box(void)
+{
+    for (int f = 0; f < TEST_NUMBER_FIELD_COUNT; f++)
+    {
+        NumberGeneration puzzle;
+        Board board;
+        start_default_board(&puzzle, &board);
+        place_group_focus(&board, 9, fixture_number_fields[f]);
+        type_value(&board, 12);
+        Board typed = board;
+        press(&board, BOARD_INPUT_DELETE);
+        ASSERT_EQ_INT(group_number(&board, 9, fixture_number_fields[f]), 1);
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_EQ_INT(group_number(&board, 9, fixture_number_fields[f]), 12);
+        ASSERT_TRUE(entries_equal(&board, &typed));
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_TRUE(undo_board_move(&board));
+        press_digit(&board, 7);
+        typed = board;
+        press(&board, BOARD_INPUT_DELETE);
+        ASSERT_TRUE(all_groups_empty(&board));
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_EQ_INT(group_number(&board, 9, fixture_number_fields[f]), 7);
+        ASSERT_TRUE(entries_equal(&board, &typed));
+    }
+}
+
+static void test_undo_board_move_reverts_operation(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    place_group_focus(&board, 3, GROUP_FIELD_OPERATION);
+    Board none = board;
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_NONE);
+    ASSERT_TRUE(entries_equal(&board, &none));
+
+    press_operation(&board, GROUP_OPERATION_ADD);
+    Board add = board;
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_MULTIPLY);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(entries_equal(&board, &add));
+
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_NONE);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(entries_equal(&board, &add));
+}
+
+static void test_undo_board_move_recomputes_slot_usages(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board initial = board;
+    press(&board, BOARD_INPUT_MOVE_UP);
+    type_value(&board, usage_add_group.smaller);
+    Board after_smaller = board;
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press_operation(&board, usage_add_group.operation);
+    Board after_operation = board;
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    type_value(&board, usage_add_group.greater);
+    ASSERT_EQ_INT(after_operation.slot_usages[TEST_GIVEN_ONE_SLOT],
+                  SLOT_USAGE_ONCE);
+    ASSERT_TRUE(all_usages_are(&after_smaller, SLOT_USAGE_NONE));
+
+    set_all_usages(&board, SLOT_USAGE_TWICE);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &after_operation));
+    ASSERT_EQ_INT(marked_usage_count(&board), 1);
+
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &after_smaller));
+    ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
+
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &initial));
+}
+
+static void test_undo_board_move_restores_exact_entries_of_each_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board before_digit = board;
+    press_digit(&board, 7);
+    Board before_delete = board;
+    press(&board, BOARD_INPUT_DELETE);
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    Board before_operation = board;
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &before_operation));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &before_delete));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &before_digit));
+    ASSERT_FALSE(undo_board_move(&board));
+}
+
+static void test_undo_board_move_keeps_cursor_and_focus(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 7);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press(&board, BOARD_INPUT_MOVE_DOWN);
+    Board positioned = board;
+    ASSERT_EQ_INT(board.cursor, TEST_SECOND_SLOT);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_GROUP);
+    ASSERT_EQ_INT(board.group_cursor, TETONOR_GRID_SIZE);
+    ASSERT_EQ_INT(board.group_field, GROUP_FIELD_GREATER);
+
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(positions_equal(&board, &positioned));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+}
+
+static void test_undo_board_move_works_from_every_focus(void)
+{
+    for (int f = 0; f < TEST_FOCUS_COUNT; f++)
+    {
+        NumberGeneration puzzle;
+        Board board;
+        start_default_board(&puzzle, &board);
+        Board empty = board;
+        press_digit(&board, 7);
+        board.focus  = fixture_focuses[f];
+        Board before = board;
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_TRUE(positions_equal(&board, &before));
+        ASSERT_TRUE(entries_equal(&board, &empty));
+        ASSERT_FALSE(undo_board_move(&board));
+    }
+}
+
+static void test_undo_board_move_reverts_moves_in_reverse_order(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board states[TEST_MIXED_MOVE_COUNT + 1];
+    states[0] = board;
+    press_digit(&board, 7);
+    states[1] = board;
+    place_group_focus(&board, 0, GROUP_FIELD_SMALLER);
+    press_digit(&board, 4);
+    states[2] = board;
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+    states[3] = board;
+    place_group_focus(&board, 0, GROUP_FIELD_GREATER);
+    press_digit(&board, 5);
+    states[4] = board;
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press(&board, BOARD_INPUT_DELETE);
+    states[5] = board;
+
+    for (int undone = 1; undone <= TEST_MIXED_MOVE_COUNT; undone++)
+    {
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_TRUE(
+            entries_equal(&board, &states[TEST_MIXED_MOVE_COUNT - undone]));
+    }
+    ASSERT_FALSE(undo_board_move(&board));
+}
+
+static void test_undo_board_move_keeps_only_the_last_twenty_moves(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board states[TEST_OVERFLOW_MOVES + 1];
+    states[0] = board;
+    for (int move = 0; move < TEST_OVERFLOW_MOVES; move++)
+    {
+        make_group_move(&board, move);
+        states[move + 1] = board;
+    }
+    for (int undone = 1; undone <= TETONOR_UNDO_HISTORY_DEPTH; undone++)
+    {
+        ASSERT_TRUE(undo_board_move(&board));
+        ASSERT_TRUE(
+            entries_equal(&board, &states[TEST_OVERFLOW_MOVES - undone]));
+    }
+    ASSERT_TRUE(entries_equal(&board, &states[1]));
+    Board before = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(boards_equal(&board, &before));
+}
+
+static void
+test_undo_board_move_keeps_exactly_twenty_moves_when_twenty_made(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board empty = board;
+    for (int move = 0; move < TETONOR_UNDO_HISTORY_DEPTH; move++)
+    {
+        make_group_move(&board, move);
+    }
+    ASSERT_EQ_INT(count_undos(&board), TETONOR_UNDO_HISTORY_DEPTH);
+    ASSERT_TRUE(entries_equal(&board, &empty));
+}
+
+static void test_undo_board_move_wraps_after_many_moves(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board expected = board;
+    for (int move = 0; move < TEST_WRAP_MOVES; move++)
+    {
+        if (move == TEST_WRAP_MOVES - TETONOR_UNDO_HISTORY_DEPTH)
+        {
+            expected = board;
+        }
+        make_group_move(&board, move);
+    }
+    ASSERT_EQ_INT(count_undos(&board), TETONOR_UNDO_HISTORY_DEPTH);
+    ASSERT_TRUE(entries_equal(&board, &expected));
+}
+
+static void test_undo_board_move_survives_repeated_ring_wraparound(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board expected = board;
+    for (int move = 0; move < TEST_REPEATED_WRAP_MOVES; move++)
+    {
+        if (move == TEST_REPEATED_WRAP_MOVES - TETONOR_UNDO_HISTORY_DEPTH)
+        {
+            expected = board;
+        }
+        make_slot_edit(&board, move);
+    }
+    ASSERT_EQ_INT(count_undos(&board), TETONOR_UNDO_HISTORY_DEPTH);
+    ASSERT_TRUE(entries_equal(&board, &expected));
+}
+
+static void test_undo_board_move_then_new_move_is_undoable(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board states[4];
+    states[0] = board;
+    for (int move = 0; move < 3; move++)
+    {
+        make_group_move(&board, move);
+        states[move + 1] = board;
+    }
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &states[2]));
+    make_group_move(&board, 10);
+    ASSERT_FALSE(entries_equal(&board, &states[2]));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &states[2]));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &states[1]));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(entries_equal(&board, &states[0]));
+    ASSERT_FALSE(undo_board_move(&board));
+}
+
+static void test_apply_board_input_noop_inputs_add_no_history(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board empty = board;
+    press_digit(&board, TEST_OTHER_DIGIT);
+    press_digit(&board, TEST_OVER_MAXIMUM_DIGIT);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TEST_OTHER_DIGIT);
+    press_ignored_movements(&board);
+    press_ignored_edits(&board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(count_undos(&board), 1);
+    ASSERT_TRUE(entries_equal(&board, &empty));
+}
+
+static void test_apply_board_input_noop_inputs_do_not_evict_history(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board empty = board;
+    for (int move = 0; move < TETONOR_UNDO_HISTORY_DEPTH; move++)
+    {
+        make_group_move(&board, move);
+    }
+    place_group_focus(&board, 1, GROUP_FIELD_GREATER);
+    ASSERT_EQ_INT(board.groups[1].greater, TEST_OTHER_DIGIT);
+    press_digit(&board, TEST_OVER_MAXIMUM_DIGIT);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(board.groups[1].greater, TEST_OTHER_DIGIT);
+    press_ignored_movements(&board);
+    press_ignored_edits(&board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(count_undos(&board), TETONOR_UNDO_HISTORY_DEPTH);
+    ASSERT_TRUE(entries_equal(&board, &empty));
+}
+
+static void
+test_apply_board_input_setting_the_same_operation_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    place_group_focus(&board, 3, GROUP_FIELD_OPERATION);
+    Board none = board;
+    press_operation(&board, GROUP_OPERATION_ADD);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(count_undos(&board), 1);
+    ASSERT_TRUE(entries_equal(&board, &none));
+}
+
+static void test_apply_board_input_repeated_zero_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board empty = board;
+    press_digit(&board, 0);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(count_undos(&board), 1);
+    ASSERT_TRUE(entries_equal(&board, &empty));
+}
+
+static void test_apply_board_input_confirm_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_and_submit(&board, fixture_wrong_last_values);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 2);
+    ASSERT_EQ_INT(board.slots[TEST_THIRD_SLOT].value, 6);
+    ASSERT_TRUE(groups_equal(board.groups, fixture_groups));
+    ASSERT_EQ_INT(count_undos(&board), TEST_FILL_MOVE_COUNT - 1);
+}
+
+static void assert_undo_restores_result(const int values[TEST_EDITABLE_COUNT],
+                                        BoardResult expected)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_and_submit(&board, values);
+    ASSERT_EQ_INT(board.result, expected);
+    Board judged = board;
+    focus_slot(&board, TEST_LAST_SLOT);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, TEST_OTHER_DIGIT);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.result, expected);
+    ASSERT_TRUE(entries_equal(&board, &judged));
+}
+
+static void test_undo_board_move_restores_result_before_the_edit(void)
+{
+    assert_undo_restores_result(fixture_hidden_values, BOARD_RESULT_CORRECT);
+    assert_undo_restores_result(fixture_wrong_last_values, BOARD_RESULT_WRONG);
+}
+
+static void test_apply_board_input_result_only_change_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_and_submit(&board, fixture_wrong_last_values);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    Board judged = board;
+    press_digit(&board, fixture_wrong_last_values[0]);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_TRUE(slots_equal(&board, &judged));
+    ASSERT_EQ_INT(count_undos(&board), TEST_FILL_MOVE_COUNT);
+}
+
+static void test_init_board_empties_move_history(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int move = 0; move < TEST_MIXED_MOVE_COUNT; move++)
+    {
+        make_group_move(&board, move);
+    }
+    init_board(&board, &puzzle);
+    Board fresh = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(boards_equal(&board, &fresh));
+    ASSERT_TRUE(all_groups_empty(&board));
+}
+
+static void test_init_board_empties_a_full_move_history(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int move = 0; move < TEST_WRAP_MOVES; move++)
+    {
+        make_group_move(&board, move);
+    }
+    init_board(&board, &puzzle);
+    ASSERT_EQ_INT(count_undos(&board), 0);
+    press_digit(&board, 7);
+    ASSERT_EQ_INT(count_undos(&board), 1);
+}
+
+static void test_undo_board_move_without_editable_slots(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    press_digit(&board, 5);
+    ASSERT_EQ_INT(board.groups[0].smaller, 5);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(all_groups_empty(&board));
+    ASSERT_EQ_INT(board.cursor, TETONOR_NO_CURSOR);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_GROUP);
+    ASSERT_FALSE(undo_board_move(&board));
+}
+
+static void test_undo_board_move_keeps_puzzle_palette_and_editable_flags(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    Board initial = board;
+    press_digit(&board, 7);
+    board.palette.foregrounds[PALETTE_ROLE_USED_ONCE].color =
+        PALETTE_COLOR_MAGENTA;
+    Board before = board;
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(board.puzzle == &puzzle);
+    ASSERT_FALSE(palette_is_default(&board.palette));
+    ASSERT_TRUE(palette_entries_equal(
+        &board.palette.foregrounds[PALETTE_ROLE_USED_ONCE],
+        &before.palette.foregrounds[PALETTE_ROLE_USED_ONCE]));
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        ASSERT_EQ_INT(board.slots[i].editable, initial.slots[i].editable);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -3109,5 +3799,37 @@ int main(void)
     RUN_TEST(test_apply_board_input_activate_on_submit_judges_and_returns_none);
     RUN_TEST(test_apply_board_input_slot_down_down_reaches_restart);
     RUN_TEST(test_apply_board_input_restart_up_up_returns_to_slot);
+    RUN_TEST(test_undo_board_move_history_depth_is_twenty);
+    RUN_TEST(test_undo_board_move_on_fresh_board_reports_nothing);
+    RUN_TEST(test_undo_board_move_on_fresh_board_without_slots_reports_nothing);
+    RUN_TEST(test_undo_board_move_on_empty_history_leaves_usages_untouched);
+    RUN_TEST(test_undo_board_move_on_exhausted_history_reports_nothing);
+    RUN_TEST(test_undo_board_move_reverts_typed_digit_in_slot);
+    RUN_TEST(test_undo_board_move_reverts_typed_digit_in_group_box);
+    RUN_TEST(test_undo_board_move_reverts_replaced_leading_zero_to_zero);
+    RUN_TEST(test_undo_board_move_reverts_deleted_digit_in_slot);
+    RUN_TEST(test_undo_board_move_reverts_deleted_digit_in_group_box);
+    RUN_TEST(test_undo_board_move_reverts_operation);
+    RUN_TEST(test_undo_board_move_recomputes_slot_usages);
+    RUN_TEST(test_undo_board_move_restores_exact_entries_of_each_move);
+    RUN_TEST(test_undo_board_move_keeps_cursor_and_focus);
+    RUN_TEST(test_undo_board_move_works_from_every_focus);
+    RUN_TEST(test_undo_board_move_reverts_moves_in_reverse_order);
+    RUN_TEST(test_undo_board_move_keeps_only_the_last_twenty_moves);
+    RUN_TEST(test_undo_board_move_keeps_exactly_twenty_moves_when_twenty_made);
+    RUN_TEST(test_undo_board_move_wraps_after_many_moves);
+    RUN_TEST(test_undo_board_move_survives_repeated_ring_wraparound);
+    RUN_TEST(test_undo_board_move_then_new_move_is_undoable);
+    RUN_TEST(test_apply_board_input_noop_inputs_add_no_history);
+    RUN_TEST(test_apply_board_input_noop_inputs_do_not_evict_history);
+    RUN_TEST(test_apply_board_input_setting_the_same_operation_is_not_a_move);
+    RUN_TEST(test_apply_board_input_repeated_zero_is_not_a_move);
+    RUN_TEST(test_apply_board_input_confirm_is_not_a_move);
+    RUN_TEST(test_undo_board_move_restores_result_before_the_edit);
+    RUN_TEST(test_apply_board_input_result_only_change_is_not_a_move);
+    RUN_TEST(test_init_board_empties_move_history);
+    RUN_TEST(test_init_board_empties_a_full_move_history);
+    RUN_TEST(test_undo_board_move_without_editable_slots);
+    RUN_TEST(test_undo_board_move_keeps_puzzle_palette_and_editable_flags);
     return test_harness_result();
 }

@@ -313,6 +313,66 @@ static void test_board_command_from_key_available_codes_still_work(void)
     ASSERT_DIGIT_COMMAND('7', unavailable_codes, 7);
 }
 
+#define ASSERT_UNDO_COMMAND(key, codes)                                        \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_UNDO);            \
+        ASSERT_EQ_INT(command_under_test.input.kind, 0);                       \
+        ASSERT_EQ_INT(command_under_test.input.digit, 0);                      \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
+    } while (0)
+
+static void test_board_command_from_key_undo_key_codes_are_u(void)
+{
+    ASSERT_EQ_INT(TETONOR_KEY_UNDO, 'u');
+    ASSERT_EQ_INT(TETONOR_KEY_UNDO_UPPER, 'U');
+}
+
+static void test_board_command_from_key_u_undoes(void)
+{
+    ASSERT_UNDO_COMMAND('u', test_codes);
+    ASSERT_UNDO_COMMAND('U', test_codes);
+    ASSERT_UNDO_COMMAND('u', unavailable_codes);
+    ASSERT_UNDO_COMMAND('U', unavailable_codes);
+    ASSERT_UNDO_COMMAND('u', vertical_unavailable_codes);
+    ASSERT_UNDO_COMMAND('U', vertical_unavailable_codes);
+}
+
+static void test_board_command_from_key_undo_neighbours_are_ignored(void)
+{
+    const int keys[] = {'t', 'T', 'v', 'V'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_NO_COMMAND(keys[i], test_codes);
+        ASSERT_NO_COMMAND(keys[i], unavailable_codes);
+    }
+}
+
+static void test_board_command_from_key_undo_keeps_existing_mappings(void)
+{
+    BoardCommand escape =
+        board_command_from_key(TETONOR_KEY_ESCAPE, &test_codes);
+    ASSERT_EQ_INT(escape.kind, BOARD_COMMAND_EXIT);
+    ASSERT_OPERATION_COMMAND('x', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('X', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('+', test_codes, GROUP_OPERATION_ADD);
+    ASSERT_DIGIT_COMMAND('5', test_codes, 5);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_BACKSPACE_KEY, test_codes, BOARD_INPUT_DELETE);
+}
+
+static void test_menus_do_not_react_to_the_undo_key(void)
+{
+    const int keys[] = {'u', 'U'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
+    }
+}
+
 static const MenuKeyCodes menu_codes = {
     .enter = TEST_ENTER_KEY, .up = TEST_UP_KEY, .down = TEST_DOWN_KEY};
 
@@ -423,6 +483,14 @@ static void test_difficulty_menu_keys_enter_on_fresh_menu_starts_medium(void)
     ASSERT_EQ_INT(menu.selected, DIFFICULTY_MEDIUM);
 }
 
+static void test_difficulty_menu_command_from_key_ignores_the_undo_key(void)
+{
+    ASSERT_EQ_INT(difficulty_menu_command_from_key('u', &menu_codes),
+                  DIFFICULTY_COMMAND_NONE);
+    ASSERT_EQ_INT(difficulty_menu_command_from_key('U', &menu_codes),
+                  DIFFICULTY_COMMAND_NONE);
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -461,5 +529,11 @@ int main(void)
     RUN_TEST(test_difficulty_menu_keys_select_hard_then_confirm);
     RUN_TEST(test_difficulty_menu_keys_escape_returns_without_starting);
     RUN_TEST(test_difficulty_menu_keys_enter_on_fresh_menu_starts_medium);
+    RUN_TEST(test_board_command_from_key_undo_key_codes_are_u);
+    RUN_TEST(test_board_command_from_key_u_undoes);
+    RUN_TEST(test_board_command_from_key_undo_neighbours_are_ignored);
+    RUN_TEST(test_board_command_from_key_undo_keeps_existing_mappings);
+    RUN_TEST(test_menus_do_not_react_to_the_undo_key);
+    RUN_TEST(test_difficulty_menu_command_from_key_ignores_the_undo_key);
     return test_harness_result();
 }
