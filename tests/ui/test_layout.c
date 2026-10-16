@@ -275,6 +275,47 @@ static void test_layout_result_message_is_below_the_available_row(void)
     ASSERT_TRUE(message.y > strip.y + LAYOUT_MINI_H - 1);
 }
 
+static void test_layout_result_texts_are_unchanged(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_CORRECT_MESSAGE, "CORRECT ANSWER") == 0);
+    ASSERT_TRUE(strcmp(LAYOUT_WRONG_MESSAGE, "WRONG ANSWER") == 0);
+    ASSERT_TRUE(LAYOUT_RESULT_MESSAGE_W >= (int)strlen(LAYOUT_CORRECT_MESSAGE));
+    ASSERT_TRUE(LAYOUT_RESULT_MESSAGE_W >= (int)strlen(LAYOUT_WRONG_MESSAGE));
+}
+
+static void test_layout_undo_notice_text(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_UNDO_EMPTY_MESSAGE, "Nothing to undo") == 0);
+}
+
+static void test_layout_undo_notice_origin_is_right_of_the_result_message(void)
+{
+    LayoutPoint message = layout_result_message_origin();
+    LayoutPoint origin  = layout_undo_notice_origin();
+    ASSERT_EQ_INT(origin.y, message.y);
+    ASSERT_EQ_INT(origin.x,
+                  message.x + LAYOUT_RESULT_MESSAGE_W + LAYOUT_NOTICE_GAP_X);
+    ASSERT_POINT(origin, 26, 18);
+}
+
+static void test_layout_undo_notice_does_not_overlap_result_texts(void)
+{
+    LayoutPoint message = layout_result_message_origin();
+    LayoutPoint origin  = layout_undo_notice_origin();
+    ASSERT_TRUE(origin.x > message.x + (int)strlen(LAYOUT_CORRECT_MESSAGE));
+    ASSERT_TRUE(origin.x > message.x + (int)strlen(LAYOUT_WRONG_MESSAGE));
+}
+
+static void test_layout_undo_notice_fits_the_minimum_terminal(void)
+{
+    LayoutPoint origin = layout_undo_notice_origin();
+    ASSERT_TRUE(origin.x + (int)strlen(LAYOUT_UNDO_EMPTY_MESSAGE) - 1 <=
+                LAYOUT_MIN_COLS - 1);
+    ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+}
+
 static void test_layout_whole_board_fits_the_minimum_terminal(void)
 {
     LayoutPoint last_block =
@@ -421,6 +462,11 @@ int main(void)
     RUN_TEST(test_layout_result_message_origin_below_restart_button);
     RUN_TEST(test_layout_result_message_is_on_the_last_minimum_row);
     RUN_TEST(test_layout_result_message_is_below_the_available_row);
+    RUN_TEST(test_layout_result_texts_are_unchanged);
+    RUN_TEST(test_layout_undo_notice_text);
+    RUN_TEST(test_layout_undo_notice_origin_is_right_of_the_result_message);
+    RUN_TEST(test_layout_undo_notice_does_not_overlap_result_texts);
+    RUN_TEST(test_layout_undo_notice_fits_the_minimum_terminal);
     RUN_TEST(test_layout_whole_board_fits_the_minimum_terminal);
     RUN_TEST(test_layout_minimum_terminal_is_eighty_by_twenty_seven);
     RUN_TEST(test_layout_fits_accepts_the_minimum_terminal);

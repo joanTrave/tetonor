@@ -19,6 +19,8 @@ enum
     TETONOR_KEY_MULTIPLY       = 'x',
     TETONOR_KEY_MULTIPLY_UPPER = 'X',
     TETONOR_KEY_STAR           = '*',
+    TETONOR_KEY_UNDO           = 'u',
+    TETONOR_KEY_UNDO_UPPER     = 'U',
     TETONOR_KEY_UNAVAILABLE    = -2 /* never returned by getch(); absent code */
 };
 
@@ -42,7 +44,8 @@ typedef enum
 {
     BOARD_COMMAND_NONE, /* key ignored */
     BOARD_COMMAND_EXIT,
-    BOARD_COMMAND_INPUT
+    BOARD_COMMAND_INPUT,
+    BOARD_COMMAND_UNDO /* revert the latest move */
 } BoardCommandKind;
 
 typedef struct

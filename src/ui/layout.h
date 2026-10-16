@@ -31,6 +31,12 @@
 #define LAYOUT_MINI_H 3
 #define LAYOUT_SECTION_GAP 1 /* the "Available:" label row */
 #define LAYOUT_MESSAGE_GAP 1 /* blank rows above the result message */
+#define LAYOUT_CORRECT_MESSAGE "CORRECT ANSWER"
+#define LAYOUT_WRONG_MESSAGE "WRONG ANSWER"
+#define LAYOUT_RESULT_MESSAGE_W ((int)(sizeof LAYOUT_CORRECT_MESSAGE - 1))
+#define LAYOUT_UNDO_EMPTY_MESSAGE "Nothing to undo"
+#define LAYOUT_NOTICE_GAP_X                                                    \
+    2 /* blank columns between the result and a notice */
 #define LAYOUT_CONFIRM_LABEL "CONFIRM"
 #define LAYOUT_RESTART_LABEL "RESTART"
 #define LAYOUT_BUTTON_PADDING 1 /* blank columns each side of the label */
@@ -95,6 +101,10 @@ LayoutPoint layout_restart_button_origin(void);
 
 /* Row/column of the result message, below the RESTART button. */
 LayoutPoint layout_result_message_origin(void);
+
+/* Row/column of the nothing-to-undo notice: on the result row, right of the
+ * longer result text. */
+LayoutPoint layout_undo_notice_origin(void);
 
 /* True when a terminal of rows x cols holds the whole board. */
 bool layout_fits(int rows, int cols);

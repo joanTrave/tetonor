@@ -118,5 +118,9 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     {
         return input_command(BOARD_INPUT_DELETE, 0);
     }
+    if (key == TETONOR_KEY_UNDO || key == TETONOR_KEY_UNDO_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_UNDO, 0, 0);
+    }
     return make_board_command(BOARD_COMMAND_NONE, 0, 0);
 }

@@ -14,6 +14,7 @@ GamePort* create_game_port(void)
     game_port->free_number_generation_f  = &free_number_generation;
     game_port->init_board_f              = &init_board;
     game_port->apply_board_input_f       = &apply_board_input;
+    game_port->undo_board_move_f         = &undo_board_move;
     return game_port;
 }
 

@@ -19,6 +19,7 @@ typedef struct
     /* Board entry related functions */
     void (*init_board_f)(Board* board, const NumberGeneration* puzzle);
     BoardEvent (*apply_board_input_f)(Board* board, BoardInput input);
+    bool (*undo_board_move_f)(Board* board);
 } GamePort;
 
 /* Returns NULL on allocation failure. */

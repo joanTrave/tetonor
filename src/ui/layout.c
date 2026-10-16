@@ -96,6 +96,13 @@ LayoutPoint layout_result_message_origin(void)
     return origin;
 }
 
+LayoutPoint layout_undo_notice_origin(void)
+{
+    LayoutPoint origin = layout_result_message_origin();
+    origin.x += LAYOUT_RESULT_MESSAGE_W + LAYOUT_NOTICE_GAP_X;
+    return origin;
+}
+
 bool layout_fits(int rows, int cols)
 {
     return rows >= LAYOUT_MIN_ROWS && cols >= LAYOUT_MIN_COLS;

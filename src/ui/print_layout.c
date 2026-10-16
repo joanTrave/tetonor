@@ -13,17 +13,15 @@
 #define BLOCK_INNER_W (LAYOUT_CELL_W - 2)
 #define NO_SEPARATOR ((chtype)0)
 
-static const char correct_message[] = "CORRECT ANSWER";
-static const char wrong_message[]   = "WRONG ANSWER";
-
 static void print_sum_matrix(const Board* board);
 static void print_available_array(const Board* board);
 static void print_button(LayoutPoint origin, const char* label, bool focused);
 static void print_confirm_button(const Board* board);
 static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
+static void print_undo_notice(void);
 
-void print_layout(const Board* board)
+void print_layout(const Board* board, bool undo_notice)
 {
     int rows = 0;
     int cols = 0;
@@ -38,6 +36,10 @@ void print_layout(const Board* board)
     print_confirm_button(board);
     print_restart_button(board);
     print_result(board);
+    if (undo_notice)
+    {
+        print_undo_notice();
+    }
 }
 
 static void draw_box(int y, int x, int h, int w)
@@ -327,6 +329,14 @@ static void print_result(const Board* board)
     LayoutPoint origin = layout_result_message_origin();
     attr_on(attrs, NULL);
     mvprintw(origin.y, origin.x, "%s",
-             correct ? correct_message : wrong_message);
+             correct ? LAYOUT_CORRECT_MESSAGE : LAYOUT_WRONG_MESSAGE);
     attr_off(attrs, NULL);
+}
+
+static void print_undo_notice(void)
+{
+    LayoutPoint origin = layout_undo_notice_origin();
+    attr_on(A_BOLD, NULL);
+    mvprintw(origin.y, origin.x, "%s", LAYOUT_UNDO_EMPTY_MESSAGE);
+    attr_off(A_BOLD, NULL);
 }
