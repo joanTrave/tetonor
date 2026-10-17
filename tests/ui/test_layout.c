@@ -430,6 +430,129 @@ static void test_layout_difficulty_menu_centres_on_the_minimum_terminal(void)
     ASSERT_TRUE(origin.x + LAYOUT_DIFFICULTY_MENU_W <= LAYOUT_MIN_COLS);
 }
 
+static void test_layout_timer_origin_value(void)
+{
+    ASSERT_POINT(layout_timer_origin(), 2, 48);
+}
+
+static void test_layout_timer_origin_is_on_the_first_cell_value_row(void)
+{
+    ASSERT_EQ_INT(layout_timer_origin().y,
+                  LAYOUT_ORIGIN_Y + LAYOUT_CELL_VALUE_ROW);
+}
+
+static void test_layout_timer_fits_minimum_terminal(void)
+{
+    LayoutPoint origin = layout_timer_origin();
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+    ASSERT_TRUE(origin.x + LAYOUT_TIMER_W <= LAYOUT_MIN_COLS);
+    ASSERT_TRUE(origin.y < LAYOUT_MIN_ROWS);
+    ASSERT_TRUE(origin.x >= 0);
+    ASSERT_TRUE(origin.y >= 0);
+}
+
+static void test_layout_timer_does_not_overlap_board(void)
+{
+    LayoutPoint origin    = layout_timer_origin();
+    LayoutPoint last_cell = layout_sum_cell_origin(0, TEST_LAST_GRID_INDEX);
+    int last_grid_column  = last_cell.x + LAYOUT_CELL_W - 1;
+    LayoutPoint confirm   = layout_confirm_button_origin();
+    ASSERT_TRUE(origin.x > last_grid_column);
+    ASSERT_TRUE(origin.y < layout_available_label_origin().y);
+    ASSERT_TRUE(origin.x + LAYOUT_TIMER_W - 1 < confirm.x ||
+                origin.y < confirm.y);
+}
+
+static void test_layout_timer_does_not_overlap_the_result_row(void)
+{
+    LayoutPoint origin = layout_timer_origin();
+    ASSERT_TRUE(origin.y < layout_result_message_origin().y);
+}
+
+static void test_layout_timer_width_matches_label_and_text(void)
+{
+    ASSERT_EQ_INT(LAYOUT_TIMER_W, (int)strlen(LAYOUT_TIMER_LABEL) +
+                                      TETONOR_ELAPSED_TEXT_SIZE - 1);
+    ASSERT_TRUE(strcmp(LAYOUT_TIMER_LABEL, "Time: ") == 0);
+}
+
+static void test_layout_main_menu_rows_fit_window(void)
+{
+    ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW >= 1);
+    ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW < LAYOUT_MENU_START_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_START_ROW < LAYOUT_MENU_STATS_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_STATS_ROW < LAYOUT_MENU_EXIT_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_EXIT_ROW < LAYOUT_MENU_H - 1);
+    ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
+    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 7);
+}
+
+static void test_layout_main_menu_statistics_hint_fits_window_width(void)
+{
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL +
+                    (int)strlen("Press S to view statistics") <=
+                LAYOUT_MENU_W - 1);
+}
+
+static void test_layout_stats_rows_follow_levels(void)
+{
+    ASSERT_EQ_INT(layout_stats_row(DIFFICULTY_EASY), 4);
+    ASSERT_EQ_INT(layout_stats_row(DIFFICULTY_MEDIUM), 5);
+    ASSERT_EQ_INT(layout_stats_row(DIFFICULTY_HARD), 6);
+    ASSERT_EQ_INT(layout_stats_row(DIFFICULTY_EASY), LAYOUT_STATS_FIRST_ROW);
+}
+
+static void test_layout_stats_menu_rows_fit_window(void)
+{
+    ASSERT_EQ_INT(LAYOUT_STATS_MENU_H, 10);
+    ASSERT_EQ_INT(LAYOUT_STATS_MENU_W, LAYOUT_MENU_W);
+    /* Room for the column header between the title and the first level. */
+    ASSERT_TRUE(LAYOUT_STATS_FIRST_ROW >= LAYOUT_MENU_TITLE_ROW + 3);
+    /* Room for the back hint below the last level, above the border. */
+    ASSERT_TRUE(layout_stats_row(DIFFICULTY_HARD) + 2 <
+                LAYOUT_STATS_MENU_H - 1);
+}
+
+static void test_layout_stats_columns_do_not_overlap(void)
+{
+    const int time_width = TETONOR_ELAPSED_TEXT_SIZE - 1;
+    ASSERT_TRUE(LAYOUT_STATS_COUNT_W >= (int)strlen("2147483647"));
+    ASSERT_TRUE(LAYOUT_STATS_COUNT_W >= (int)strlen("Completed"));
+    ASSERT_TRUE(time_width >= (int)strlen("Average"));
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL + (int)strlen("Difficulty") <
+                LAYOUT_STATS_COUNT_COL);
+    ASSERT_TRUE(LAYOUT_STATS_COUNT_COL + LAYOUT_STATS_COUNT_W <
+                LAYOUT_STATS_BEST_COL);
+    ASSERT_TRUE(LAYOUT_STATS_BEST_COL + time_width < LAYOUT_STATS_AVERAGE_COL);
+}
+
+static void test_layout_stats_columns_fit_window_width(void)
+{
+    const int time_width = TETONOR_ELAPSED_TEXT_SIZE - 1;
+    ASSERT_TRUE(LAYOUT_STATS_AVERAGE_COL + time_width <=
+                LAYOUT_STATS_MENU_W - 1);
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL + (int)strlen("Press ESC to go back") <=
+                LAYOUT_STATS_MENU_W - 1);
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL + (int)strlen("Statistics") <=
+                LAYOUT_STATS_MENU_W - 1);
+}
+
+static void test_layout_stats_menu_centres_on_the_minimum_terminal(void)
+{
+    LayoutPoint origin =
+        layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                      LAYOUT_STATS_MENU_H, LAYOUT_STATS_MENU_W);
+    ASSERT_TRUE(LAYOUT_STATS_MENU_H <= LAYOUT_MIN_ROWS);
+    ASSERT_TRUE(LAYOUT_STATS_MENU_W <= LAYOUT_MIN_COLS);
+    ASSERT_TRUE(origin.y >= 0);
+    ASSERT_TRUE(origin.x >= 0);
+    ASSERT_TRUE(origin.y + LAYOUT_STATS_MENU_H <= LAYOUT_MIN_ROWS);
+    ASSERT_TRUE(origin.x + LAYOUT_STATS_MENU_W <= LAYOUT_MIN_COLS);
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -480,5 +603,18 @@ int main(void)
     RUN_TEST(test_layout_difficulty_title_row_is_below_the_top_border);
     RUN_TEST(test_layout_difficulty_hints_fit_window_width);
     RUN_TEST(test_layout_difficulty_menu_centres_on_the_minimum_terminal);
+    RUN_TEST(test_layout_timer_origin_value);
+    RUN_TEST(test_layout_timer_origin_is_on_the_first_cell_value_row);
+    RUN_TEST(test_layout_timer_fits_minimum_terminal);
+    RUN_TEST(test_layout_timer_does_not_overlap_board);
+    RUN_TEST(test_layout_timer_does_not_overlap_the_result_row);
+    RUN_TEST(test_layout_timer_width_matches_label_and_text);
+    RUN_TEST(test_layout_main_menu_rows_fit_window);
+    RUN_TEST(test_layout_main_menu_statistics_hint_fits_window_width);
+    RUN_TEST(test_layout_stats_rows_follow_levels);
+    RUN_TEST(test_layout_stats_menu_rows_fit_window);
+    RUN_TEST(test_layout_stats_columns_do_not_overlap);
+    RUN_TEST(test_layout_stats_columns_fit_window_width);
+    RUN_TEST(test_layout_stats_menu_centres_on_the_minimum_terminal);
     return test_harness_result();
 }

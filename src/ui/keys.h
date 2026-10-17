@@ -3,6 +3,7 @@
 
 #include "difficulty_menu.h"
 #include "menu.h"
+#include "stats_menu.h"
 #include "../game/game_port.h"
 
 enum
@@ -13,15 +14,17 @@ enum
     TETONOR_KEY_RETURN    = '\r',
     TETONOR_KEY_BACKSPACE = '\b',
     TETONOR_KEY_DELETE    = 127, /* DEL, sent as backspace by many terminals */
-    TETONOR_KEY_DIGIT_FIRST    = '0',
-    TETONOR_KEY_DIGIT_LAST     = '9',
-    TETONOR_KEY_PLUS           = '+',
-    TETONOR_KEY_MULTIPLY       = 'x',
-    TETONOR_KEY_MULTIPLY_UPPER = 'X',
-    TETONOR_KEY_STAR           = '*',
-    TETONOR_KEY_UNDO           = 'u',
-    TETONOR_KEY_UNDO_UPPER     = 'U',
-    TETONOR_KEY_UNAVAILABLE    = -2 /* never returned by getch(); absent code */
+    TETONOR_KEY_DIGIT_FIRST      = '0',
+    TETONOR_KEY_DIGIT_LAST       = '9',
+    TETONOR_KEY_PLUS             = '+',
+    TETONOR_KEY_MULTIPLY         = 'x',
+    TETONOR_KEY_MULTIPLY_UPPER   = 'X',
+    TETONOR_KEY_STAR             = '*',
+    TETONOR_KEY_UNDO             = 'u',
+    TETONOR_KEY_UNDO_UPPER       = 'U',
+    TETONOR_KEY_STATISTICS       = 's',
+    TETONOR_KEY_STATISTICS_UPPER = 'S',
+    TETONOR_KEY_UNAVAILABLE = -2 /* never returned by getch(); absent code */
 };
 
 /* Curses key codes the board needs, passed in so this module stays free of
@@ -74,5 +77,9 @@ difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes);
 
 /* Maps a key to a board command. Unknown keys give BOARD_COMMAND_NONE. */
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes);
+
+/* Maps a key to a statistics-screen command. Unknown keys give
+ * STATS_MENU_COMMAND_NONE. */
+StatsMenuCommand stats_menu_command_from_key(int key);
 
 #endif

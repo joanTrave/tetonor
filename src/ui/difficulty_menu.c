@@ -54,15 +54,20 @@ void apply_difficulty_menu_command(DifficultyMenu* menu,
     }
 }
 
-const char* difficulty_menu_label(int difficulty)
+int difficulty_menu_clamp(int difficulty)
 {
     if (difficulty < DIFFICULTY_EASY)
     {
-        difficulty = DIFFICULTY_EASY;
+        return DIFFICULTY_EASY;
     }
     if (difficulty > DIFFICULTY_HARD)
     {
-        difficulty = DIFFICULTY_HARD;
+        return DIFFICULTY_HARD;
     }
-    return difficulty_labels[difficulty];
+    return difficulty;
+}
+
+const char* difficulty_menu_label(int difficulty)
+{
+    return difficulty_labels[difficulty_menu_clamp(difficulty)];
 }

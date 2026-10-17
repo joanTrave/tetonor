@@ -15,6 +15,8 @@ GamePort* create_game_port(void)
     game_port->init_board_f              = &init_board;
     game_port->apply_board_input_f       = &apply_board_input;
     game_port->undo_board_move_f         = &undo_board_move;
+    game_port->start_game_timer_f        = &start_game_timer;
+    game_port->update_game_timer_f       = &update_game_timer;
     return game_port;
 }
 
