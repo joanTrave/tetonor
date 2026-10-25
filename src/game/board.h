@@ -103,6 +103,8 @@ void init_board(Board* board, const NumberGeneration* puzzle);
  * every group box is filled. Recomputes slot_usages after every input.
  * Records the entries before every input that changes a slot value or a group
  * box as one undoable move, keeping the latest TETONOR_UNDO_HISTORY_DEPTH.
+ * While the board is locked, digits, deletes, operations and ACTIVATE on the
+ * submit control change nothing and return BOARD_EVENT_NONE.
  * ACTIVATE on the restart control returns BOARD_EVENT_RESTART and leaves the
  * board unchanged; every other input returns BOARD_EVENT_NONE. */
 BoardEvent apply_board_input(Board* board, BoardInput input);
@@ -110,7 +112,16 @@ BoardEvent apply_board_input(Board* board, BoardInput input);
 /* Reverts the latest move recorded by apply_board_input: slot values, group
  * boxes and result return to what they were just before it, and slot_usages
  * are recomputed. Cursor, group cursor and field, and focus are not touched.
- * Returns false, leaving the board unchanged, when there is no move to undo. */
+ * Returns false, leaving the board unchanged, when there is no move to undo or
+ * the board is locked. */
 bool undo_board_move(Board* board);
+
+/* True while CORRECT ANSWER is shown: the board then takes only cursor
+ * movement and the restart control, until init_board starts a new game. */
+bool is_board_locked(const Board* board);
+
+/* True when leaving or restarting would lose progress: the board is not
+ * locked and has at least one undoable edit. */
+bool board_progress_would_be_lost(const Board* board);
 
 #endif

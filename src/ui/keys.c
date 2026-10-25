@@ -25,6 +25,13 @@ static bool key_matches(int key, int code)
     return code != TETONOR_KEY_UNAVAILABLE && key == code;
 }
 
+/* SPACE, ENTER in any form: the key that activates the highlighted option. */
+static bool is_select_key(int key, const MenuKeyCodes* key_codes)
+{
+    return key == TETONOR_KEY_SPACE || key == TETONOR_KEY_NEWLINE ||
+           key == TETONOR_KEY_RETURN || key_matches(key, key_codes->enter);
+}
+
 DifficultyMenuCommand
 difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes)
 {
@@ -36,8 +43,7 @@ difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes)
     {
         return DIFFICULTY_COMMAND_DOWN;
     }
-    if (key == TETONOR_KEY_SPACE || key == TETONOR_KEY_NEWLINE ||
-        key == TETONOR_KEY_RETURN || key_matches(key, key_codes->enter))
+    if (is_select_key(key, key_codes))
     {
         return DIFFICULTY_COMMAND_CONFIRM;
     }
@@ -46,6 +52,55 @@ difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes)
         return DIFFICULTY_COMMAND_BACK;
     }
     return DIFFICULTY_COMMAND_NONE;
+}
+
+PauseMenuCommand pause_menu_command_from_key(int key,
+                                             const MenuKeyCodes* key_codes)
+{
+    if (key_matches(key, key_codes->up))
+    {
+        return PAUSE_MENU_COMMAND_UP;
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return PAUSE_MENU_COMMAND_DOWN;
+    }
+    if (is_select_key(key, key_codes))
+    {
+        return PAUSE_MENU_COMMAND_SELECT;
+    }
+    if (key == TETONOR_KEY_ESCAPE || key == TETONOR_KEY_PAUSE ||
+        key == TETONOR_KEY_PAUSE_UPPER)
+    {
+        return PAUSE_MENU_COMMAND_RESUME;
+    }
+    return PAUSE_MENU_COMMAND_NONE;
+}
+
+PromptCommand prompt_command_from_key(int key, const MenuKeyCodes* key_codes)
+{
+    if (key_matches(key, key_codes->up))
+    {
+        return PROMPT_COMMAND_UP;
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return PROMPT_COMMAND_DOWN;
+    }
+    if (is_select_key(key, key_codes))
+    {
+        return PROMPT_COMMAND_SELECT;
+    }
+    if (key == TETONOR_KEY_YES || key == TETONOR_KEY_YES_UPPER)
+    {
+        return PROMPT_COMMAND_YES;
+    }
+    if (key == TETONOR_KEY_NO || key == TETONOR_KEY_NO_UPPER ||
+        key == TETONOR_KEY_ESCAPE)
+    {
+        return PROMPT_COMMAND_NO;
+    }
+    return PROMPT_COMMAND_NONE;
 }
 
 static BoardCommand make_board_command(BoardCommandKind kind,
@@ -125,6 +180,18 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     if (key == TETONOR_KEY_UNDO || key == TETONOR_KEY_UNDO_UPPER)
     {
         return make_board_command(BOARD_COMMAND_UNDO, 0, 0);
+    }
+    if (key == TETONOR_KEY_PAUSE || key == TETONOR_KEY_PAUSE_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_PAUSE, 0, 0);
+    }
+    if (key == TETONOR_KEY_NEW_GAME || key == TETONOR_KEY_NEW_GAME_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_NEW_GAME, 0, 0);
+    }
+    if (key == TETONOR_KEY_MAIN_MENU || key == TETONOR_KEY_MAIN_MENU_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_MAIN_MENU, 0, 0);
     }
     return make_board_command(BOARD_COMMAND_NONE, 0, 0);
 }

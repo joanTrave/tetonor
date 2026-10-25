@@ -21,6 +21,7 @@ static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
 static void print_undo_notice(void);
 static void print_timer(int32_t elapsed_seconds);
+static void print_controls_help(void);
 
 void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
 {
@@ -42,6 +43,7 @@ void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
     {
         print_undo_notice();
     }
+    print_controls_help();
 }
 
 static void draw_box(int y, int x, int h, int w)
@@ -349,4 +351,102 @@ static void print_timer(int32_t elapsed_seconds)
     format_elapsed_time(elapsed_seconds, text, sizeof text);
     LayoutPoint origin = layout_timer_origin();
     mvprintw(origin.y, origin.x, "%s%s", LAYOUT_TIMER_LABEL, text);
+}
+
+static void print_controls_help(void)
+{
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        LayoutPoint origin = layout_help_line_origin(i);
+        mvprintw(origin.y, origin.x, "%s", layout_help_line(i));
+    }
+}
+
+/* "> " and reversed video mark the highlighted option, as in menu.c. */
+static void print_panel_option(LayoutPoint panel, int row, const char* label,
+                               bool selected)
+{
+    if (selected)
+    {
+        attr_on(A_REVERSE, NULL);
+    }
+    mvprintw(panel.y + row, panel.x + LAYOUT_MENU_TEXT_COL, "%s%s",
+             selected ? "> " : "  ", label);
+    if (selected)
+    {
+        attr_off(A_REVERSE, NULL);
+    }
+}
+
+static void print_panel_text(LayoutPoint panel, int row, const char* text)
+{
+    mvprintw(panel.y + row, panel.x + LAYOUT_MENU_TEXT_COL, "%s", text);
+}
+
+static void print_panel_title(LayoutPoint panel, int width, int row,
+                              const char* title)
+{
+    mvprintw(panel.y + row,
+             panel.x + layout_centered_offset(width, (int)strlen(title)), "%s",
+             title);
+}
+
+static void print_pause_panel(const PauseState* pause, int rows, int cols)
+{
+    LayoutPoint panel = layout_centered_window_origin(
+        rows, cols, LAYOUT_PAUSE_MENU_H, LAYOUT_PAUSE_MENU_W);
+    draw_box(panel.y, panel.x, LAYOUT_PAUSE_MENU_H, LAYOUT_PAUSE_MENU_W);
+    print_panel_title(panel, LAYOUT_PAUSE_MENU_W, LAYOUT_PAUSE_TITLE_ROW,
+                      LAYOUT_PAUSE_TITLE);
+    for (int option = 0; option < PAUSE_OPTION_COUNT; option++)
+    {
+        print_panel_option(panel, layout_pause_option_row(option),
+                           pause_option_label(option),
+                           option == (int)pause->selected);
+    }
+    print_panel_text(panel, LAYOUT_PAUSE_CHOOSE_ROW, LAYOUT_PAUSE_CHOOSE_HINT);
+    print_panel_text(panel, LAYOUT_PAUSE_BACK_ROW, LAYOUT_PAUSE_BACK_HINT);
+}
+
+static void print_prompt_panel(const PauseState* pause, int rows, int cols)
+{
+    LayoutPoint panel = layout_centered_window_origin(
+        rows, cols, LAYOUT_PROMPT_H, LAYOUT_PROMPT_W);
+    draw_box(panel.y, panel.x, LAYOUT_PROMPT_H, LAYOUT_PROMPT_W);
+    print_panel_title(panel, LAYOUT_PROMPT_W, LAYOUT_PROMPT_TITLE_ROW,
+                      prompt_question(pause->pending));
+    print_panel_text(panel, LAYOUT_PROMPT_WARNING_ROW, LAYOUT_PROMPT_WARNING);
+    for (int option = 0; option < PROMPT_OPTION_COUNT; option++)
+    {
+        print_panel_option(panel, layout_prompt_option_row(option),
+                           prompt_option_label(option),
+                           option == (int)pause->answer);
+    }
+    print_panel_text(panel, LAYOUT_PROMPT_CHOOSE_ROW,
+                     LAYOUT_PROMPT_CHOOSE_HINT);
+    print_panel_text(panel, LAYOUT_PROMPT_BACK_ROW, LAYOUT_PROMPT_BACK_HINT);
+}
+
+void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds)
+{
+    int rows = 0;
+    int cols = 0;
+    getmaxyx(stdscr, rows, cols);
+    if (!layout_fits(rows, cols))
+    {
+        mvprintw(0, 0, LAYOUT_ENLARGE_FORMAT, LAYOUT_MIN_COLS, LAYOUT_MIN_ROWS);
+        return;
+    }
+    print_timer(elapsed_seconds);
+    switch (pause->screen)
+    {
+        case PAUSE_SCREEN_MENU:
+            print_pause_panel(pause, rows, cols);
+            break;
+        case PAUSE_SCREEN_PROMPT:
+            print_prompt_panel(pause, rows, cols);
+            break;
+        case PAUSE_SCREEN_PLAYING:
+            break;
+    }
 }

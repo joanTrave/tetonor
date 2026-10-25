@@ -34,8 +34,10 @@ TESTABLE_OBJ := $(patsubst %.c,build/obj/%.o,$(wildcard src/game/*.c \
                                                          src/storage/*.c \
                                                          src/platform/*.c)) \
                 build/obj/src/ui/difficulty_menu.o \
+                build/obj/src/ui/game_session.o \
                 build/obj/src/ui/keys.o build/obj/src/ui/layout.o \
                 build/obj/src/ui/palette_style.o \
+                build/obj/src/ui/pause_menu.o \
                 build/obj/src/ui/read_timeout.o \
                 build/obj/src/ui/stats_menu.o
 

@@ -22,11 +22,15 @@ typedef struct
     void (*init_board_f)(Board* board, const NumberGeneration* puzzle);
     BoardEvent (*apply_board_input_f)(Board* board, BoardInput input);
     bool (*undo_board_move_f)(Board* board);
+    bool (*is_board_locked_f)(const Board* board);
+    bool (*board_progress_would_be_lost_f)(const Board* board);
 
     /* Game timer related functions */
     void (*start_game_timer_f)(GameTimer* timer, time_t now);
     bool (*update_game_timer_f)(GameTimer* timer, BoardResult result,
                                 time_t now);
+    void (*pause_game_timer_f)(GameTimer* timer, time_t now);
+    void (*resume_game_timer_f)(GameTimer* timer, time_t now);
 } GamePort;
 
 /* Returns NULL on allocation failure. */

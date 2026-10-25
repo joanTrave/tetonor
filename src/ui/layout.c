@@ -10,6 +10,12 @@
 static const int group_field_offsets[] = {SMALLER_OFFSET, OPERATION_OFFSET,
                                           GREATER_OFFSET};
 
+static const char* const help_lines[LAYOUT_HELP_LINE_COUNT] = {
+    "Arrows move   0-9 type   + x * operation   BACKSPACE delete",
+    "ENTER/SPACE press button   U undo   P pause",
+    "N new game   M main menu   ESC leave without asking",
+};
+
 int layout_centered_offset(int container_size, int content_size)
 {
     int offset = (container_size - content_size) / 2;
@@ -110,6 +116,39 @@ LayoutPoint layout_timer_origin(void)
     origin.y = LAYOUT_ORIGIN_Y + LAYOUT_CELL_VALUE_ROW;
     origin.x = last_cell.x + LAYOUT_CELL_W + LAYOUT_TIMER_GAP_X;
     return origin;
+}
+
+const char* layout_help_line(int index)
+{
+    if (index < 0 || index >= LAYOUT_HELP_LINE_COUNT)
+    {
+        return "";
+    }
+    return help_lines[index];
+}
+
+LayoutPoint layout_help_line_origin(int index)
+{
+    LayoutPoint origin;
+    origin.y = layout_restart_button_origin().y + index;
+    origin.x = LAYOUT_ORIGIN_X;
+    return origin;
+}
+
+int layout_help_width(void)
+{
+    return layout_confirm_button_origin().x - LAYOUT_BUTTON_GAP_X -
+           LAYOUT_ORIGIN_X;
+}
+
+int layout_pause_option_row(int option)
+{
+    return LAYOUT_PAUSE_FIRST_OPTION_ROW + option;
+}
+
+int layout_prompt_option_row(int option)
+{
+    return LAYOUT_PROMPT_FIRST_OPTION_ROW + option;
 }
 
 int layout_stats_row(int difficulty)

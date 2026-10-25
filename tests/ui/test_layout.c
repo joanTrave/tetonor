@@ -6,6 +6,7 @@
 #include "../../src/game/number_generation.h"
 #include "../../src/game/operand_group.h"
 #include "../../src/ui/layout.h"
+#include "../../src/ui/pause_menu.h"
 
 #define TEST_FIELD_COUNT 3
 #define TEST_MESSAGE_ROWS 1
@@ -553,6 +554,181 @@ static void test_layout_stats_menu_centres_on_the_minimum_terminal(void)
     ASSERT_TRUE(origin.x + LAYOUT_STATS_MENU_W <= LAYOUT_MIN_COLS);
 }
 
+static void test_layout_help_lines_texts(void)
+{
+    ASSERT_EQ_INT(LAYOUT_HELP_LINE_COUNT, 3);
+    ASSERT_TRUE(strcmp(layout_help_line(0),
+                       "Arrows move   0-9 type   + x * "
+                       "operation   BACKSPACE delete") == 0);
+    ASSERT_TRUE(strcmp(layout_help_line(1),
+                       "ENTER/SPACE press button   U undo   P pause") == 0);
+    ASSERT_TRUE(strcmp(layout_help_line(2),
+                       "N new game   M main menu   ESC leave without asking") ==
+                0);
+    ASSERT_TRUE(strcmp(layout_help_line(-1), "") == 0);
+    ASSERT_TRUE(strcmp(layout_help_line(LAYOUT_HELP_LINE_COUNT), "") == 0);
+}
+
+static bool help_mentions(const char* text)
+{
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        if (strstr(layout_help_line(i), text) != NULL)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void test_layout_help_lines_name_every_shortcut(void)
+{
+    ASSERT_TRUE(help_mentions("P pause"));
+    ASSERT_TRUE(help_mentions("N new game"));
+    ASSERT_TRUE(help_mentions("M main menu"));
+    ASSERT_TRUE(help_mentions("U undo"));
+    ASSERT_TRUE(help_mentions("ESC leave"));
+}
+
+static void test_layout_help_lines_fit_their_width(void)
+{
+    ASSERT_EQ_INT(layout_help_width(), 64);
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        ASSERT_TRUE(strlen(layout_help_line(i)) > 0);
+        ASSERT_TRUE((int)strlen(layout_help_line(i)) <= layout_help_width());
+    }
+}
+
+static void test_layout_help_line_origins(void)
+{
+    ASSERT_POINT(layout_help_line_origin(0), 22, 2);
+    ASSERT_POINT(layout_help_line_origin(1), 23, 2);
+    ASSERT_POINT(layout_help_line_origin(2), 24, 2);
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        ASSERT_EQ_INT(layout_help_line_origin(i).y,
+                      layout_restart_button_origin().y + i);
+        ASSERT_EQ_INT(layout_help_line_origin(i).x, LAYOUT_ORIGIN_X);
+    }
+}
+
+static void test_layout_help_does_not_overlap(void)
+{
+    int first_row = layout_help_line_origin(0).y;
+    int last_row  = layout_help_line_origin(LAYOUT_HELP_LINE_COUNT - 1).y;
+    int last_available_row =
+        layout_available_cell_origin(TEST_LAST_INDEX).y + LAYOUT_MINI_H - 1;
+    ASSERT_TRUE(first_row > last_available_row);
+    ASSERT_TRUE(last_row < layout_result_message_origin().y);
+    ASSERT_TRUE(last_row < layout_undo_notice_origin().y);
+    ASSERT_TRUE(first_row > layout_timer_origin().y);
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        int right_edge =
+            layout_help_line_origin(i).x + (int)strlen(layout_help_line(i)) - 1;
+        ASSERT_TRUE(right_edge < layout_restart_button_origin().x);
+        ASSERT_TRUE(right_edge < layout_confirm_button_origin().x);
+    }
+}
+
+static void test_layout_help_fits_the_minimum_terminal(void)
+{
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        LayoutPoint origin = layout_help_line_origin(i);
+        ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+        ASSERT_TRUE(origin.x + (int)strlen(layout_help_line(i)) - 1 <=
+                    LAYOUT_MIN_COLS - 1);
+    }
+}
+
+static void test_layout_pause_panel_fits(void)
+{
+    ASSERT_EQ_INT(layout_pause_option_row(PAUSE_OPTION_RESUME), 3);
+    ASSERT_EQ_INT(layout_pause_option_row(PAUSE_OPTION_ABANDON), 4);
+    const int rows[] = {LAYOUT_PAUSE_TITLE_ROW,
+                        layout_pause_option_row(PAUSE_OPTION_RESUME),
+                        layout_pause_option_row(PAUSE_OPTION_ABANDON),
+                        LAYOUT_PAUSE_CHOOSE_ROW, LAYOUT_PAUSE_BACK_ROW};
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++)
+    {
+        ASSERT_TRUE(rows[i] >= 1);
+        ASSERT_TRUE(rows[i] <= LAYOUT_PAUSE_MENU_H - 2);
+        if (i > 0)
+        {
+            ASSERT_TRUE(rows[i] > rows[i - 1]);
+        }
+    }
+    int text_width = LAYOUT_PAUSE_MENU_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_CHOOSE_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_BACK_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_TITLE) <= text_width);
+    for (int option = 0; option < PAUSE_OPTION_COUNT; option++)
+    {
+        ASSERT_TRUE((int)strlen("> ") +
+                        (int)strlen(pause_option_label(option)) <=
+                    text_width);
+    }
+    ASSERT_POINT(layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                               LAYOUT_PAUSE_MENU_H,
+                                               LAYOUT_PAUSE_MENU_W),
+                 9, 15);
+}
+
+static void test_layout_prompt_panel_fits(void)
+{
+    ASSERT_EQ_INT(layout_prompt_option_row(PROMPT_OPTION_YES), 4);
+    ASSERT_EQ_INT(layout_prompt_option_row(PROMPT_OPTION_NO), 5);
+    const int rows[] = {LAYOUT_PROMPT_TITLE_ROW,
+                        LAYOUT_PROMPT_WARNING_ROW,
+                        layout_prompt_option_row(PROMPT_OPTION_YES),
+                        layout_prompt_option_row(PROMPT_OPTION_NO),
+                        LAYOUT_PROMPT_CHOOSE_ROW,
+                        LAYOUT_PROMPT_BACK_ROW};
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++)
+    {
+        ASSERT_TRUE(rows[i] >= 1);
+        ASSERT_TRUE(rows[i] <= LAYOUT_PROMPT_H - 2);
+        if (i > 0)
+        {
+            ASSERT_TRUE(rows[i] > rows[i - 1]);
+        }
+    }
+    int text_width = LAYOUT_PROMPT_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_TRUE((int)strlen(LAYOUT_PROMPT_WARNING) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_PROMPT_CHOOSE_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_PROMPT_BACK_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(prompt_question(GAME_ACTION_NEW_GAME)) <=
+                text_width);
+    ASSERT_TRUE((int)strlen(prompt_question(GAME_ACTION_MAIN_MENU)) <=
+                text_width);
+    for (int option = 0; option < PROMPT_OPTION_COUNT; option++)
+    {
+        ASSERT_TRUE((int)strlen("> ") +
+                        (int)strlen(prompt_option_label(option)) <=
+                    text_width);
+    }
+    ASSERT_POINT(layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                               LAYOUT_PROMPT_H,
+                                               LAYOUT_PROMPT_W),
+                 8, 15);
+}
+
+static void test_layout_panels_do_not_cover_the_timer(void)
+{
+    LayoutPoint timer = layout_timer_origin();
+    LayoutPoint pause =
+        layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                      LAYOUT_PAUSE_MENU_H, LAYOUT_PAUSE_MENU_W);
+    LayoutPoint prompt = layout_centered_window_origin(
+        LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS, LAYOUT_PROMPT_H, LAYOUT_PROMPT_W);
+    ASSERT_TRUE(pause.y > timer.y);
+    ASSERT_TRUE(prompt.y > timer.y);
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -616,5 +792,14 @@ int main(void)
     RUN_TEST(test_layout_stats_columns_do_not_overlap);
     RUN_TEST(test_layout_stats_columns_fit_window_width);
     RUN_TEST(test_layout_stats_menu_centres_on_the_minimum_terminal);
+    RUN_TEST(test_layout_help_lines_texts);
+    RUN_TEST(test_layout_help_lines_name_every_shortcut);
+    RUN_TEST(test_layout_help_lines_fit_their_width);
+    RUN_TEST(test_layout_help_line_origins);
+    RUN_TEST(test_layout_help_does_not_overlap);
+    RUN_TEST(test_layout_help_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_pause_panel_fits);
+    RUN_TEST(test_layout_prompt_panel_fits);
+    RUN_TEST(test_layout_panels_do_not_cover_the_timer);
     return test_harness_result();
 }

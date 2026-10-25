@@ -3,6 +3,7 @@
 
 #include "difficulty_menu.h"
 #include "menu.h"
+#include "pause_menu.h"
 #include "stats_menu.h"
 #include "../game/game_port.h"
 
@@ -24,6 +25,16 @@ enum
     TETONOR_KEY_UNDO_UPPER       = 'U',
     TETONOR_KEY_STATISTICS       = 's',
     TETONOR_KEY_STATISTICS_UPPER = 'S',
+    TETONOR_KEY_PAUSE            = 'p',
+    TETONOR_KEY_PAUSE_UPPER      = 'P',
+    TETONOR_KEY_NEW_GAME         = 'n',
+    TETONOR_KEY_NEW_GAME_UPPER   = 'N',
+    TETONOR_KEY_MAIN_MENU        = 'm',
+    TETONOR_KEY_MAIN_MENU_UPPER  = 'M',
+    TETONOR_KEY_YES              = 'y',
+    TETONOR_KEY_YES_UPPER        = 'Y',
+    TETONOR_KEY_NO               = 'n', /* prompt answer; see NEW_GAME */
+    TETONOR_KEY_NO_UPPER         = 'N',
     TETONOR_KEY_UNAVAILABLE = -2 /* never returned by getch(); absent code */
 };
 
@@ -48,7 +59,10 @@ typedef enum
     BOARD_COMMAND_NONE, /* key ignored */
     BOARD_COMMAND_EXIT,
     BOARD_COMMAND_INPUT,
-    BOARD_COMMAND_UNDO /* revert the latest move */
+    BOARD_COMMAND_UNDO,     /* revert the latest move */
+    BOARD_COMMAND_PAUSE,    /* open the pause menu */
+    BOARD_COMMAND_NEW_GAME, /* start another game at the same difficulty */
+    BOARD_COMMAND_MAIN_MENU /* leave for the main menu */
 } BoardCommandKind;
 
 typedef struct
@@ -74,6 +88,15 @@ typedef struct
  * DIFFICULTY_COMMAND_NONE. */
 DifficultyMenuCommand
 difficulty_menu_command_from_key(int key, const MenuKeyCodes* key_codes);
+
+/* Maps a key to a pause-menu command. Unknown keys give
+ * PAUSE_MENU_COMMAND_NONE. */
+PauseMenuCommand pause_menu_command_from_key(int key,
+                                             const MenuKeyCodes* key_codes);
+
+/* Maps a key to a confirmation-prompt command. Unknown keys give
+ * PROMPT_COMMAND_NONE. */
+PromptCommand prompt_command_from_key(int key, const MenuKeyCodes* key_codes);
 
 /* Maps a key to a board command. Unknown keys give BOARD_COMMAND_NONE. */
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes);

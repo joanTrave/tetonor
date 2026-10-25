@@ -138,6 +138,12 @@ static void start_correct_board(NumberGeneration* puzzle, Board* board)
     fill_and_submit(board, fixture_hidden_values);
 }
 
+static void start_wrong_board(NumberGeneration* puzzle, Board* board)
+{
+    start_default_board(puzzle, board);
+    fill_and_submit(board, fixture_wrong_last_values);
+}
+
 static void empty_group_field(Board* board, int cell, GroupField field)
 {
     OperandGroup* group = &board->groups[cell];
@@ -1272,8 +1278,8 @@ static void test_apply_board_input_group_digit_after_result_clears_result(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
-    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 3, GROUP_FIELD_GREATER);
     press_digit(&board, 7);
     ASSERT_EQ_INT(board.groups[3].greater, 7);
@@ -1284,7 +1290,8 @@ static void test_apply_board_input_group_zero_after_result_replaces_value(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 3, GROUP_FIELD_SMALLER);
     press_digit(&board, 0);
     ASSERT_EQ_INT(board.groups[3].smaller, 0);
@@ -1366,7 +1373,8 @@ static void test_apply_board_input_group_delete_after_result_clears_result(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 13, GROUP_FIELD_SMALLER);
     press(&board, BOARD_INPUT_DELETE);
     ASSERT_EQ_INT(board.groups[13].smaller, 1);
@@ -1378,7 +1386,8 @@ test_apply_board_input_group_delete_after_result_empties_single_digit(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 0, GROUP_FIELD_GREATER);
     press(&board, BOARD_INPUT_DELETE);
     ASSERT_EQ_INT(board.groups[0].greater, TETONOR_EMPTY_ENTRY);
@@ -1452,7 +1461,8 @@ static void test_apply_board_input_operation_after_result_clears_result(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
     press_operation(&board, GROUP_OPERATION_MULTIPLY);
     ASSERT_EQ_INT(board.groups[0].operation, GROUP_OPERATION_MULTIPLY);
@@ -1464,7 +1474,8 @@ test_apply_board_input_same_operation_after_result_clears_result(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
     press_operation(&board, GROUP_OPERATION_ADD);
     ASSERT_EQ_INT(board.groups[0].operation, GROUP_OPERATION_ADD);
@@ -1499,7 +1510,8 @@ test_apply_board_input_delete_on_operation_after_result_clears_it(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     place_group_focus(&board, 4, GROUP_FIELD_OPERATION);
     press(&board, BOARD_INPUT_DELETE);
     ASSERT_EQ_INT(board.groups[4].operation, GROUP_OPERATION_NONE);
@@ -2014,7 +2026,8 @@ static void test_apply_board_input_edit_after_result_keeps_other_values(void)
 {
     NumberGeneration puzzle;
     Board board;
-    start_correct_board(&puzzle, &board);
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
     press(&board, BOARD_INPUT_MOVE_UP);
     press_digit(&board, 7);
     ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 2);
@@ -2121,20 +2134,25 @@ static void test_apply_board_input_wrong_then_group_fix_is_correct(void)
     ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
 }
 
-static void test_apply_board_input_editing_correct_result_clears_it(void)
+static void test_apply_board_input_editing_correct_result_is_locked(void)
 {
     NumberGeneration puzzle;
     Board board;
     start_correct_board(&puzzle, &board);
     ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
     press(&board, BOARD_INPUT_MOVE_UP);
+    Board before = board;
     press(&board, BOARD_INPUT_DELETE);
-    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(boards_equal(&board, &before));
     press(&board, BOARD_INPUT_DELETE);
     type_value(&board, TEST_WRONG_VALUE);
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 29);
+    ASSERT_TRUE(boards_equal(&board, &before));
     press(&board, BOARD_INPUT_MOVE_DOWN);
     press(&board, BOARD_INPUT_ACTIVATE);
-    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 29);
 }
 
 static void test_apply_board_input_editing_a_group_clears_a_wrong_result(void)
@@ -3521,8 +3539,21 @@ static void assert_undo_restores_result(const int values[TEST_EDITABLE_COUNT],
 
 static void test_undo_board_move_restores_result_before_the_edit(void)
 {
-    assert_undo_restores_result(fixture_hidden_values, BOARD_RESULT_CORRECT);
     assert_undo_restores_result(fixture_wrong_last_values, BOARD_RESULT_WRONG);
+
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    Board judged = board;
+    int moves    = board.history.count;
+    focus_slot(&board, TEST_LAST_SLOT);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(entries_equal(&board, &judged));
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.history.count, moves);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(entries_equal(&board, &judged));
 }
 
 static void test_apply_board_input_result_only_change_is_not_a_move(void)
@@ -3605,6 +3636,297 @@ static void test_undo_board_move_keeps_puzzle_palette_and_editable_flags(void)
     {
         ASSERT_EQ_INT(board.slots[i].editable, initial.slots[i].editable);
     }
+}
+
+#define TEST_LOCKED_FOCUS_COUNT 6
+#define TEST_LOCKED_CELL 3
+#define TEST_SEQUENCE_START_COUNT 2
+#define TEST_ELEMENT_GROUP_GREATER 2
+#define TEST_ELEMENT_SUBMIT 4
+#define TEST_BOX_ELEMENT_COUNT 4
+
+/* Puts the focus on one kind of element: 0 slot, 1 group smaller box, 2 group
+ * greater box, 3 operation box, 4 submit control, 5 restart control. */
+static void focus_element(Board* board, int element)
+{
+    switch (element)
+    {
+        case 0:
+            focus_slot(board, TEST_LAST_SLOT);
+            break;
+        case 1:
+            place_group_focus(board, TEST_LOCKED_CELL, GROUP_FIELD_SMALLER);
+            break;
+        case 2:
+            place_group_focus(board, TEST_LOCKED_CELL, GROUP_FIELD_GREATER);
+            break;
+        case 3:
+            place_group_focus(board, TEST_LOCKED_CELL, GROUP_FIELD_OPERATION);
+            break;
+        case 4:
+            board->focus = BOARD_FOCUS_SUBMIT;
+            break;
+        default:
+            board->focus = BOARD_FOCUS_RESTART;
+            break;
+    }
+}
+
+/* Every field an input could change, the move history included. */
+static bool locked_board_unchanged(const Board* board, const Board* before)
+{
+    return boards_equal(board, before) &&
+           board->history.count == before->history.count &&
+           board->history.newest == before->history.newest &&
+           board->result == BOARD_RESULT_CORRECT;
+}
+
+static void assert_locked_board_ignores(Board* board, BoardInput input)
+{
+    Board before     = *board;
+    BoardEvent event = apply_board_input(board, input);
+    ASSERT_EQ_INT(event, BOARD_EVENT_NONE);
+    ASSERT_TRUE(locked_board_unchanged(board, &before));
+}
+
+static void test_is_board_locked_follows_the_result(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_FALSE(is_board_locked(&board));
+    press_digit(&board, 7);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_FALSE(is_board_locked(&board));
+
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_FALSE(is_board_locked(&board));
+
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(is_board_locked(&board));
+    press(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_TRUE(is_board_locked(&board));
+
+    init_board(&board, &puzzle);
+    ASSERT_FALSE(is_board_locked(&board));
+}
+
+static void test_apply_board_input_locked_board_ignores_digits(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_TRUE(board.history.count > 0);
+    for (int element = 0; element < TEST_LOCKED_FOCUS_COUNT; element++)
+    {
+        focus_element(&board, element);
+        for (int digit = 0; digit < TETONOR_DIGIT_BASE; digit++)
+        {
+            BoardInput input = {.kind = BOARD_INPUT_DIGIT, .digit = digit};
+            assert_locked_board_ignores(&board, input);
+        }
+    }
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 29);
+    ASSERT_TRUE(groups_equal(board.groups, fixture_groups));
+}
+
+static void test_apply_board_input_locked_board_ignores_operations(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    const GroupOperation operations[] = {
+        GROUP_OPERATION_ADD, GROUP_OPERATION_MULTIPLY, GROUP_OPERATION_NONE};
+    for (int element = 0; element < TEST_LOCKED_FOCUS_COUNT; element++)
+    {
+        focus_element(&board, element);
+        for (size_t i = 0; i < sizeof operations / sizeof operations[0]; i++)
+        {
+            BoardInput input = {.kind      = BOARD_INPUT_OPERATION,
+                                .operation = operations[i]};
+            assert_locked_board_ignores(&board, input);
+        }
+    }
+    ASSERT_TRUE(groups_equal(board.groups, fixture_groups));
+}
+
+static void test_apply_board_input_locked_board_ignores_delete(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    BoardInput input = {.kind = BOARD_INPUT_DELETE};
+    for (int element = 0; element < TEST_LOCKED_FOCUS_COUNT; element++)
+    {
+        focus_element(&board, element);
+        assert_locked_board_ignores(&board, input);
+        assert_locked_board_ignores(&board, input);
+        assert_locked_board_ignores(&board, input);
+    }
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 29);
+    ASSERT_TRUE(groups_equal(board.groups, fixture_groups));
+}
+
+static void test_apply_board_input_locked_board_ignores_confirm(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    board.focus      = BOARD_FOCUS_SUBMIT;
+    BoardInput input = {.kind = BOARD_INPUT_ACTIVATE};
+    assert_locked_board_ignores(&board, input);
+
+    /* Were CONFIRM allowed, judging this entry again would give WRONG. */
+    board.slots[TEST_LAST_SLOT].value = TEST_WRONG_VALUE;
+    assert_locked_board_ignores(&board, input);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+}
+
+static void test_apply_board_input_locked_board_activating_a_box_is_a_noop(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    BoardInput input = {.kind = BOARD_INPUT_ACTIVATE};
+    for (int element = 0; element < TEST_BOX_ELEMENT_COUNT; element++)
+    {
+        focus_element(&board, element);
+        assert_locked_board_ignores(&board, input);
+    }
+}
+
+static void test_apply_board_input_locked_board_allows_movement(void)
+{
+    NumberGeneration puzzle;
+    Board locked;
+    start_correct_board(&puzzle, &locked);
+    for (int start = 0; start < TEST_SEQUENCE_START_COUNT; start++)
+    {
+        for (int sequence = 0; sequence < TEST_MOVE_SEQUENCE_COUNT; sequence++)
+        {
+            Board board = locked;
+            focus_element(&board, start == 0 ? TEST_ELEMENT_SUBMIT
+                                             : TEST_ELEMENT_GROUP_GREATER);
+            Board free_board  = board;
+            free_board.result = BOARD_RESULT_PENDING;
+            Board before      = board;
+            press_movement_sequence(&board, sequence);
+            press_movement_sequence(&free_board, sequence);
+            ASSERT_EQ_INT(board.cursor, free_board.cursor);
+            ASSERT_EQ_INT(board.focus, free_board.focus);
+            ASSERT_EQ_INT(board.group_cursor, free_board.group_cursor);
+            ASSERT_EQ_INT(board.group_field, free_board.group_field);
+            ASSERT_TRUE(entries_equal(&board, &before));
+            ASSERT_EQ_INT(board.history.count, before.history.count);
+            ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+        }
+    }
+}
+
+static void test_apply_board_input_locked_board_movement_changes_focus(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    ASSERT_EQ_INT(press_for_event(&board, BOARD_INPUT_MOVE_UP),
+                  BOARD_EVENT_NONE);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    press(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_GROUP);
+    press_times(&board, BOARD_INPUT_MOVE_DOWN, TETONOR_GRID_SIZE + 1);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    press(&board, BOARD_INPUT_MOVE_DOWN);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+}
+
+static void test_apply_board_input_locked_board_still_restarts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_DOWN);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_RESTART);
+    Board before = board;
+    ASSERT_EQ_INT(press_for_event(&board, BOARD_INPUT_ACTIVATE),
+                  BOARD_EVENT_RESTART);
+    ASSERT_TRUE(locked_board_unchanged(&board, &before));
+}
+
+static void test_undo_board_move_locked_board_does_nothing(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    int moves = board.history.count;
+    ASSERT_TRUE(moves > 0);
+    Board before = board;
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(locked_board_unchanged(&board, &before));
+    ASSERT_EQ_INT(board.history.count, moves);
+    ASSERT_EQ_INT(board.slots[TEST_LAST_SLOT].value, 29);
+}
+
+static void test_undo_board_move_works_again_after_a_new_game(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    init_board(&board, &puzzle);
+    press_digit(&board, 7);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+}
+
+static void test_board_progress_would_be_lost_rules(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    press(&board, BOARD_INPUT_MOVE_LEFT);
+    press(&board, BOARD_INPUT_DELETE);
+    press_digit(&board, TEST_OUT_OF_RANGE_DIGIT);
+    press(&board, BOARD_INPUT_MOVE_DOWN);
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.history.count, 0);
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+
+    press(&board, BOARD_INPUT_MOVE_UP);
+    press_digit(&board, 7);
+    ASSERT_TRUE(board_progress_would_be_lost(&board));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_TRUE(board_progress_would_be_lost(&board));
+
+    start_correct_board(&puzzle, &board);
+    ASSERT_TRUE(board.history.count > 0);
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+
+    init_board(&board, &puzzle);
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+}
+
+static void test_board_progress_would_be_lost_with_a_full_history(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int move = 0; move < TETONOR_UNDO_HISTORY_DEPTH + 1; move++)
+    {
+        retype_slot(&board, move % TETONOR_DIGIT_BASE);
+    }
+    ASSERT_EQ_INT(board.history.count, TETONOR_UNDO_HISTORY_DEPTH);
+    ASSERT_TRUE(board_progress_would_be_lost(&board));
 }
 
 int main(void)
@@ -3754,7 +4076,7 @@ int main(void)
     RUN_TEST(test_apply_board_input_resubmitting_fixed_entry_is_correct);
     RUN_TEST(test_apply_board_input_wrong_then_digit_fix_is_correct);
     RUN_TEST(test_apply_board_input_wrong_then_group_fix_is_correct);
-    RUN_TEST(test_apply_board_input_editing_correct_result_clears_it);
+    RUN_TEST(test_apply_board_input_editing_correct_result_is_locked);
     RUN_TEST(test_apply_board_input_editing_a_group_clears_a_wrong_result);
     RUN_TEST(test_apply_board_input_moving_cursor_keeps_result);
     RUN_TEST(test_apply_board_input_never_changes_given_numbers);
@@ -3831,5 +4153,18 @@ int main(void)
     RUN_TEST(test_init_board_empties_a_full_move_history);
     RUN_TEST(test_undo_board_move_without_editable_slots);
     RUN_TEST(test_undo_board_move_keeps_puzzle_palette_and_editable_flags);
+    RUN_TEST(test_is_board_locked_follows_the_result);
+    RUN_TEST(test_apply_board_input_locked_board_ignores_digits);
+    RUN_TEST(test_apply_board_input_locked_board_ignores_operations);
+    RUN_TEST(test_apply_board_input_locked_board_ignores_delete);
+    RUN_TEST(test_apply_board_input_locked_board_ignores_confirm);
+    RUN_TEST(test_apply_board_input_locked_board_activating_a_box_is_a_noop);
+    RUN_TEST(test_apply_board_input_locked_board_allows_movement);
+    RUN_TEST(test_apply_board_input_locked_board_movement_changes_focus);
+    RUN_TEST(test_apply_board_input_locked_board_still_restarts);
+    RUN_TEST(test_undo_board_move_locked_board_does_nothing);
+    RUN_TEST(test_undo_board_move_works_again_after_a_new_game);
+    RUN_TEST(test_board_progress_would_be_lost_rules);
+    RUN_TEST(test_board_progress_would_be_lost_with_a_full_history);
     return test_harness_result();
 }
