@@ -3,8 +3,12 @@ tetonor
 .vscode/ipch/
 .DS_Store
 .vscode/
-.claude
-CLAUDE.md
+# Claude Code: shared config is versioned; personal and per-task state is not
+.claude/settings.local.json
+.claude/metrics/agent-usage.jsonl
+.claude/tasks/
+.claude/prompts/
+CLAUDE.local.md
 
 build/
 tetonor.exe
