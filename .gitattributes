@@ -1,0 +1,2 @@
+# Shell scripts must keep LF on every platform (core.autocrlf=true would break `sh`).
+*.sh text eol=lf
