@@ -24,6 +24,7 @@ typedef struct
     bool (*undo_board_move_f)(Board* board);
     bool (*is_board_locked_f)(const Board* board);
     bool (*board_progress_would_be_lost_f)(const Board* board);
+    int (*board_move_count_f)(const Board* board);
 
     /* Game timer related functions */
     void (*start_game_timer_f)(GameTimer* timer, time_t now);

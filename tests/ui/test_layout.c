@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,6 +8,7 @@
 #include "../../src/game/operand_group.h"
 #include "../../src/ui/layout.h"
 #include "../../src/ui/pause_menu.h"
+#include "../../src/ui/victory_menu.h"
 
 #define TEST_FIELD_COUNT 3
 #define TEST_MESSAGE_ROWS 1
@@ -729,6 +731,84 @@ static void test_layout_panels_do_not_cover_the_timer(void)
     ASSERT_TRUE(prompt.y > timer.y);
 }
 
+static void test_layout_victory_rows(void)
+{
+    ASSERT_EQ_INT(layout_victory_summary_row(VICTORY_SUMMARY_TIME), 3);
+    ASSERT_EQ_INT(layout_victory_summary_row(VICTORY_SUMMARY_DIFFICULTY), 4);
+    ASSERT_EQ_INT(layout_victory_summary_row(VICTORY_SUMMARY_MOVES), 5);
+    ASSERT_EQ_INT(layout_victory_option_row(VICTORY_OPTION_NEW_GAME), 7);
+    ASSERT_EQ_INT(layout_victory_option_row(VICTORY_OPTION_MAIN_MENU), 8);
+    ASSERT_EQ_INT(LAYOUT_VICTORY_TITLE_ROW, 1);
+    ASSERT_EQ_INT(LAYOUT_VICTORY_CHOOSE_ROW, 10);
+    ASSERT_EQ_INT(LAYOUT_VICTORY_SHORTCUT_ROW, 11);
+    ASSERT_EQ_INT(LAYOUT_VICTORY_H, 13);
+    ASSERT_EQ_INT(LAYOUT_VICTORY_W, LAYOUT_MENU_W);
+}
+
+static void test_layout_victory_panel_rows_inside(void)
+{
+    const int rows[] = {LAYOUT_VICTORY_TITLE_ROW,
+                        layout_victory_summary_row(VICTORY_SUMMARY_TIME),
+                        layout_victory_summary_row(VICTORY_SUMMARY_DIFFICULTY),
+                        layout_victory_summary_row(VICTORY_SUMMARY_MOVES),
+                        layout_victory_option_row(VICTORY_OPTION_NEW_GAME),
+                        layout_victory_option_row(VICTORY_OPTION_MAIN_MENU),
+                        LAYOUT_VICTORY_CHOOSE_ROW,
+                        LAYOUT_VICTORY_SHORTCUT_ROW};
+    for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++)
+    {
+        ASSERT_TRUE(rows[i] >= 1);
+        ASSERT_TRUE(rows[i] <= LAYOUT_VICTORY_H - 2);
+        if (i > 0)
+        {
+            ASSERT_TRUE(rows[i] > rows[i - 1]);
+        }
+    }
+}
+
+static void test_layout_victory_texts_fit(void)
+{
+    int text_width = LAYOUT_VICTORY_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_EQ_INT(strcmp(LAYOUT_VICTORY_TITLE, "Puzzle solved!"), 0);
+    ASSERT_EQ_INT(
+        strcmp(LAYOUT_VICTORY_SHORTCUT_HINT, "N new game   M or ESC main menu"),
+        0);
+    ASSERT_EQ_INT(strcmp(LAYOUT_VICTORY_CHOOSE_HINT, LAYOUT_PAUSE_CHOOSE_HINT),
+                  0);
+    ASSERT_TRUE((int)strlen(LAYOUT_VICTORY_TITLE) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_VICTORY_CHOOSE_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_VICTORY_SHORTCUT_HINT) <= text_width);
+    for (int option = 0; option < VICTORY_OPTION_COUNT; option++)
+    {
+        ASSERT_TRUE((int)strlen("> ") +
+                        (int)strlen(victory_option_label(option)) <=
+                    text_width);
+    }
+    VictorySummary longest;
+    build_victory_summary(TETONOR_TIMER_MAX_SECONDS, DIFFICULTY_MEDIUM, INT_MAX,
+                          &longest);
+    for (int line = 0; line < VICTORY_SUMMARY_LINE_COUNT; line++)
+    {
+        ASSERT_TRUE(strlen(longest.lines[line]) > 0);
+        ASSERT_TRUE((int)strlen(longest.lines[line]) <= text_width);
+    }
+}
+
+static void test_layout_victory_fits_the_minimum_terminal(void)
+{
+    LayoutPoint origin = layout_centered_window_origin(
+        LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS, LAYOUT_VICTORY_H, LAYOUT_VICTORY_W);
+    ASSERT_POINT(origin, 7, 15);
+    ASSERT_EQ_INT(origin.y + LAYOUT_VICTORY_H - 1, 19);
+    ASSERT_EQ_INT(origin.x + LAYOUT_VICTORY_W - 1, 64);
+    ASSERT_TRUE(origin.y + LAYOUT_VICTORY_H - 1 <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_TRUE(origin.x + LAYOUT_VICTORY_W - 1 <= LAYOUT_MIN_COLS - 1);
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+    ASSERT_TRUE(layout_fits(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS));
+    ASSERT_FALSE(layout_fits(LAYOUT_MIN_ROWS - 1, LAYOUT_MIN_COLS));
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -801,5 +881,9 @@ int main(void)
     RUN_TEST(test_layout_pause_panel_fits);
     RUN_TEST(test_layout_prompt_panel_fits);
     RUN_TEST(test_layout_panels_do_not_cover_the_timer);
+    RUN_TEST(test_layout_victory_rows);
+    RUN_TEST(test_layout_victory_panel_rows_inside);
+    RUN_TEST(test_layout_victory_texts_fit);
+    RUN_TEST(test_layout_victory_fits_the_minimum_terminal);
     return test_harness_result();
 }

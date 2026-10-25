@@ -39,7 +39,8 @@ TESTABLE_OBJ := $(patsubst %.c,build/obj/%.o,$(wildcard src/game/*.c \
                 build/obj/src/ui/palette_style.o \
                 build/obj/src/ui/pause_menu.o \
                 build/obj/src/ui/read_timeout.o \
-                build/obj/src/ui/stats_menu.o
+                build/obj/src/ui/stats_menu.o \
+                build/obj/src/ui/victory_menu.o
 
 TEST_SRC := $(wildcard tests/*/test_*.c)
 TEST_BIN := $(TEST_SRC:tests/%.c=build/tests/%$(EXE))

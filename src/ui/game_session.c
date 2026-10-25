@@ -15,6 +15,7 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
     game_port->init_board_f(&session->board, session->puzzle);
     game_port->start_game_timer_f(&session->timer, now);
     init_pause_state(&session->pause);
+    init_victory_state(&session->victory);
     session->undo_notice     = false;
     session->board_key_codes = *board_key_codes;
     session->menu_key_codes  = *menu_key_codes;
@@ -41,6 +42,7 @@ static bool restart_new_game(const GamePort* game_port, GameSession* session,
         return false;
     }
     game_port->start_game_timer_f(&session->timer, now);
+    init_victory_state(&session->victory);
     return true;
 }
 
@@ -113,6 +115,13 @@ static GameAction handle_pause_key(const GamePort* game_port,
     return GAME_ACTION_NONE;
 }
 
+static GameAction handle_victory_key(GameSession* session, int key)
+{
+    return apply_victory_menu_command(
+        &session->victory,
+        victory_menu_command_from_key(key, &session->menu_key_codes));
+}
+
 /* The timer stands still exactly while the pause menu or a prompt is shown. */
 static void sync_pause_timer(const GamePort* game_port, GameSession* session,
                              bool was_paused, time_t now)
@@ -154,7 +163,11 @@ GameSessionOutcome handle_game_session_key(const GamePort* game_port,
     GameSessionOutcome outcome = GAME_SESSION_CONTINUE;
     GameAction action;
     session->undo_notice = false;
-    if (was_paused)
+    if (is_victory_shown(&session->victory))
+    {
+        action = handle_victory_key(session, key);
+    }
+    else if (was_paused)
     {
         action = handle_pause_key(game_port, session, key);
     }
@@ -169,6 +182,13 @@ GameSessionOutcome handle_game_session_key(const GamePort* game_port,
 bool update_game_session_timer(const GamePort* game_port, GameSession* session,
                                time_t now)
 {
-    return game_port->update_game_timer_f(&session->timer,
-                                          session->board.result, now);
+    if (!game_port->update_game_timer_f(&session->timer, session->board.result,
+                                        now))
+    {
+        return false;
+    }
+    open_victory_screen(&session->victory, session->timer.elapsed_seconds,
+                        game_port->difficulty,
+                        game_port->board_move_count_f(&session->board));
+    return true;
 }

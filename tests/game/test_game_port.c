@@ -1113,6 +1113,116 @@ static void test_restart_game_unlocks_the_board(void)
     ASSERT_TRUE(fresh);
 }
 
+static void test_create_game_port_wires_move_count(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool wired = game_port->board_move_count_f == board_move_count;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(wired);
+}
+
+static void test_game_port_counts_moves_through_port(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration puzzle;
+    build_fixture_puzzle(&puzzle, fixture_old_hidden, TEST_OLD_HIDDEN_COUNT);
+    Board board;
+    game_port->init_board_f(&board, &puzzle);
+    int fresh = game_port->board_move_count_f(&board);
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    int after_digit = game_port->board_move_count_f(&board);
+    press_through_port(game_port, &board, BOARD_INPUT_DELETE);
+    press_through_port(game_port, &board, BOARD_INPUT_DELETE);
+    int after_deletes = game_port->board_move_count_f(&board);
+    press_digit_through_port(game_port, &board, 1);
+    press_digit_through_port(game_port, &board, 2);
+    press_digit_through_port(game_port, &board, 9);
+    press_through_port(game_port, &board, BOARD_INPUT_MOVE_RIGHT);
+    press_through_port(game_port, &board, BOARD_INPUT_ACTIVATE);
+    int after_more = game_port->board_move_count_f(&board);
+    bool undone    = game_port->undo_board_move_f(&board);
+    bool undone_2  = game_port->undo_board_move_f(&board);
+    int after_undo = game_port->board_move_count_f(&board);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(fresh, 0);
+    ASSERT_EQ_INT(after_digit, 1);
+    ASSERT_EQ_INT(after_deletes, 2);
+    ASSERT_EQ_INT(after_more, 4);
+    ASSERT_TRUE(undone);
+    ASSERT_TRUE(undone_2);
+    ASSERT_EQ_INT(after_undo, 4);
+}
+
+static void test_restart_game_resets_move_count(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    press_through_port(game_port, &board, BOARD_INPUT_MOVE_RIGHT);
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    int before     = game_port->board_move_count_f(&board);
+    bool restarted = restart_game(game_port, &board, &puzzle);
+    int after      = game_port->board_move_count_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(before, 2);
+    ASSERT_TRUE(restarted);
+    ASSERT_EQ_INT(after, 0);
+}
+
+static void test_restart_game_failure_keeps_move_count(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    fake_generate_fails = true;
+    bool restarted      = restart_game(game_port, &board, &puzzle);
+    int after           = game_port->board_move_count_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(restarted);
+    ASSERT_EQ_INT(after, 1);
+}
+
+static void test_restart_game_with_real_port_resets_move_count(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle = generate_through_port(game_port);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    int before     = game_port->board_move_count_f(&board);
+    bool restarted = restart_game(game_port, &board, &puzzle);
+    int after      = game_port->board_move_count_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(before, 1);
+    ASSERT_TRUE(restarted);
+    ASSERT_EQ_INT(after, 0);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -1152,5 +1262,10 @@ int main(void)
     RUN_TEST(test_game_port_pause_through_port_freezes_time);
     RUN_TEST(test_game_port_correct_board_through_port_is_locked);
     RUN_TEST(test_restart_game_unlocks_the_board);
+    RUN_TEST(test_create_game_port_wires_move_count);
+    RUN_TEST(test_game_port_counts_moves_through_port);
+    RUN_TEST(test_restart_game_resets_move_count);
+    RUN_TEST(test_restart_game_failure_keeps_move_count);
+    RUN_TEST(test_restart_game_with_real_port_resets_move_count);
     return test_harness_result();
 }

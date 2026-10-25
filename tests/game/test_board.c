@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -3929,6 +3930,342 @@ static void test_board_progress_would_be_lost_with_a_full_history(void)
     ASSERT_TRUE(board_progress_would_be_lost(&board));
 }
 
+#define TEST_PRESET_MOVE_COUNT 77
+#define TEST_MANY_MOVES 200
+#define TEST_EXTRA_MOVES 5
+
+static void test_init_board_zeroes_move_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.move_count, 0);
+    board.move_count = TEST_PRESET_MOVE_COUNT;
+    init_board(&board, &puzzle);
+    ASSERT_EQ_INT(board.move_count, 0);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    press_digit(&board, 0);
+    ASSERT_TRUE(board.move_count > 0);
+    init_board(&board, &puzzle);
+    ASSERT_EQ_INT(board.move_count, 0);
+}
+
+static void test_apply_board_input_digit_counts_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.move_count, 1);
+    press_digit(&board, 5);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 25);
+    ASSERT_EQ_INT(board.move_count, 2);
+    place_group_focus(&board, 4, GROUP_FIELD_SMALLER);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.move_count, 3);
+    place_group_focus(&board, 4, GROUP_FIELD_GREATER);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(board.groups[4].greater, 0);
+    ASSERT_EQ_INT(board.move_count, 4);
+}
+
+static void test_apply_board_input_operation_counts_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    place_group_focus(&board, 3, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.move_count, 1);
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+    ASSERT_EQ_INT(board.groups[3].operation, GROUP_OPERATION_MULTIPLY);
+    ASSERT_EQ_INT(board.move_count, 2);
+    press_operation(&board, GROUP_OPERATION_MULTIPLY);
+    ASSERT_EQ_INT(board.move_count, 2);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.move_count, 3);
+}
+
+static void test_apply_board_input_delete_counts_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.move_count, 1);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TETONOR_EMPTY_ENTRY);
+    ASSERT_EQ_INT(board.move_count, 2);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.move_count, 2);
+
+    place_group_focus(&board, 2, GROUP_FIELD_GREATER);
+    press_digit(&board, 1);
+    ASSERT_EQ_INT(board.move_count, 3);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.groups[2].greater, TETONOR_EMPTY_ENTRY);
+    ASSERT_EQ_INT(board.move_count, 4);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.move_count, 4);
+
+    place_group_focus(&board, 2, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.move_count, 5);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.groups[2].operation, GROUP_OPERATION_NONE);
+    ASSERT_EQ_INT(board.move_count, 6);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.move_count, 6);
+}
+
+static void test_apply_board_input_unchanged_entries_are_not_moves(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(board.move_count, 1);
+    press_digit(&board, 0);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 0);
+    ASSERT_EQ_INT(board.move_count, 1);
+
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.move_count, 2);
+    press_digit(&board, TEST_OVER_MAXIMUM_DIGIT);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TEST_OTHER_DIGIT);
+    press_digit(&board, TEST_OUT_OF_RANGE_DIGIT);
+    press_digit(&board, -1);
+    ASSERT_EQ_INT(board.move_count, 2);
+
+    place_group_focus(&board, 6, GROUP_FIELD_SMALLER);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.move_count, 3);
+    press_digit(&board, TEST_OVER_MAXIMUM_DIGIT);
+    ASSERT_EQ_INT(board.groups[6].smaller, 25);
+    ASSERT_EQ_INT(board.move_count, 4);
+    press_digit(&board, TEST_OVER_MAXIMUM_DIGIT);
+    ASSERT_EQ_INT(board.groups[6].smaller, 25);
+    ASSERT_EQ_INT(board.move_count, 4);
+
+    place_group_focus(&board, 6, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_NONE);
+    ASSERT_EQ_INT(board.move_count, 4);
+    press_digit(&board, 1);
+    ASSERT_EQ_INT(board.move_count, 4);
+
+    focus_slot(&board, TEST_SECOND_SLOT);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    press(&board, BOARD_INPUT_ACTIVATE);
+    place_group_focus(&board, 6, GROUP_FIELD_GREATER);
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.move_count, 4);
+}
+
+static void test_apply_board_input_movement_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.move_count, 1);
+    for (int f = 0; f < TEST_FOCUS_COUNT; f++)
+    {
+        for (int k = 0; k < TEST_MOVE_KIND_COUNT; k++)
+        {
+            board.focus = fixture_focuses[f];
+            press(&board, fixture_move_kinds[k]);
+            ASSERT_EQ_INT(board.move_count, 1);
+        }
+    }
+}
+
+static void test_apply_board_input_confirm_does_not_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.move_count, 0);
+
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+    board.focus = BOARD_FOCUS_RESTART;
+    ASSERT_EQ_INT(press_for_event(&board, BOARD_INPUT_ACTIVATE),
+                  BOARD_EVENT_RESTART);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+}
+
+static void test_apply_board_input_clearing_a_verdict_alone_is_not_a_move(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    empty_group_field(&board, 0, GROUP_FIELD_SMALLER);
+    place_group_focus(&board, 0, GROUP_FIELD_SMALLER);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+
+    start_wrong_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, fixture_wrong_last_values[0]);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+
+    focus_slot(&board, TEST_FIRST_SLOT);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT + 1);
+}
+
+static void test_apply_board_input_locked_board_counts_nothing(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+    const GroupOperation operations[] = {
+        GROUP_OPERATION_ADD, GROUP_OPERATION_MULTIPLY, GROUP_OPERATION_NONE};
+    for (int element = 0; element < TEST_LOCKED_FOCUS_COUNT; element++)
+    {
+        focus_element(&board, element);
+        for (int digit = 0; digit < TETONOR_DIGIT_BASE; digit++)
+        {
+            press_digit(&board, digit);
+        }
+        press(&board, BOARD_INPUT_DELETE);
+        for (size_t i = 0; i < sizeof operations / sizeof operations[0]; i++)
+        {
+            press_operation(&board, operations[i]);
+        }
+        press(&board, BOARD_INPUT_ACTIVATE);
+        for (int k = 0; k < TEST_MOVE_KIND_COUNT; k++)
+        {
+            focus_element(&board, element);
+            press(&board, fixture_move_kinds[k]);
+        }
+        ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+    }
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+}
+
+static void test_undo_board_move_keeps_move_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int move = 0; move < 3; move++)
+    {
+        make_group_move(&board, move);
+    }
+    ASSERT_EQ_INT(board.move_count, 3);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.move_count, 3);
+    ASSERT_EQ_INT(board.history.count, 1);
+    make_group_move(&board, 3);
+    ASSERT_EQ_INT(board.move_count, 4);
+    ASSERT_EQ_INT(count_undos(&board), 2);
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.move_count, 4);
+}
+
+static void test_undo_board_move_on_locked_board_keeps_move_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.move_count, TEST_FILL_MOVE_COUNT);
+}
+
+static void test_move_count_exceeds_undo_depth(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int move = 0; move < TETONOR_UNDO_HISTORY_DEPTH + TEST_EXTRA_MOVES;
+         move++)
+    {
+        make_group_move(&board, move);
+    }
+    ASSERT_EQ_INT(board.move_count,
+                  TETONOR_UNDO_HISTORY_DEPTH + TEST_EXTRA_MOVES);
+    ASSERT_EQ_INT(board.history.count, TETONOR_UNDO_HISTORY_DEPTH);
+
+    init_board(&board, &puzzle);
+    for (int move = 0; move < TEST_MANY_MOVES; move++)
+    {
+        make_slot_edit(&board, move);
+    }
+    ASSERT_EQ_INT(board.move_count, TEST_MANY_MOVES);
+    ASSERT_EQ_INT(board.history.count, TETONOR_UNDO_HISTORY_DEPTH);
+}
+
+static void test_apply_board_input_move_count_saturates(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    board.move_count = INT_MAX - 1;
+    make_group_move(&board, 0);
+    ASSERT_EQ_INT(board.move_count, INT_MAX);
+    make_group_move(&board, 1);
+    ASSERT_EQ_INT(board.move_count, INT_MAX);
+    make_group_move(&board, 2);
+    ASSERT_EQ_INT(board.move_count, INT_MAX);
+    ASSERT_EQ_INT(board.history.count, 3);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.move_count, INT_MAX);
+}
+
+static void test_board_move_count_returns_the_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_EQ_INT(board_move_count(&board), 0);
+    make_group_move(&board, 0);
+    make_group_move(&board, 1);
+    ASSERT_EQ_INT(board_move_count(&board), 2);
+    ASSERT_EQ_INT(board_move_count(&board), board.move_count);
+    board.move_count = TEST_PRESET_MOVE_COUNT;
+    ASSERT_EQ_INT(board_move_count(&board), TEST_PRESET_MOVE_COUNT);
+    const Board* read_only = &board;
+    ASSERT_EQ_INT(board_move_count(read_only), TEST_PRESET_MOVE_COUNT);
+}
+
+static void test_board_move_count_follows_a_solved_game(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board_move_count(&board), TEST_FILL_MOVE_COUNT);
+    ASSERT_EQ_INT(board_move_count(&board), board.history.count);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -4166,5 +4503,20 @@ int main(void)
     RUN_TEST(test_undo_board_move_works_again_after_a_new_game);
     RUN_TEST(test_board_progress_would_be_lost_rules);
     RUN_TEST(test_board_progress_would_be_lost_with_a_full_history);
+    RUN_TEST(test_init_board_zeroes_move_count);
+    RUN_TEST(test_apply_board_input_digit_counts_a_move);
+    RUN_TEST(test_apply_board_input_operation_counts_a_move);
+    RUN_TEST(test_apply_board_input_delete_counts_a_move);
+    RUN_TEST(test_apply_board_input_unchanged_entries_are_not_moves);
+    RUN_TEST(test_apply_board_input_movement_is_not_a_move);
+    RUN_TEST(test_apply_board_input_confirm_does_not_count);
+    RUN_TEST(test_apply_board_input_clearing_a_verdict_alone_is_not_a_move);
+    RUN_TEST(test_apply_board_input_locked_board_counts_nothing);
+    RUN_TEST(test_undo_board_move_keeps_move_count);
+    RUN_TEST(test_undo_board_move_on_locked_board_keeps_move_count);
+    RUN_TEST(test_move_count_exceeds_undo_depth);
+    RUN_TEST(test_apply_board_input_move_count_saturates);
+    RUN_TEST(test_board_move_count_returns_the_count);
+    RUN_TEST(test_board_move_count_follows_a_solved_game);
     return test_harness_result();
 }

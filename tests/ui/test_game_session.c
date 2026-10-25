@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -955,11 +956,11 @@ check_completed_game_is_not_recorded_again(const GamePort* game_port,
     ASSERT_FALSE(
         update_game_session_timer(game_port, session, TEST_START_TIME + 20));
 
-    press(game_port, session, 'P', TEST_START_TIME + 30);
-    ASSERT_TRUE(session->timer.paused);
-    ASSERT_FALSE(update_game_session_timer(game_port, session, 500));
-    press(game_port, session, TEST_ESCAPE, 600);
+    ASSERT_EQ_INT(press(game_port, session, 'P', TEST_START_TIME + 30),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(is_victory_shown(&session->victory));
     ASSERT_FALSE(session->timer.paused);
+    ASSERT_FALSE(update_game_session_timer(game_port, session, 500));
     ASSERT_FALSE(update_game_session_timer(game_port, session, 700));
     ASSERT_FALSE(update_game_session_timer(game_port, session, 800));
     ASSERT_EQ_INT(session->timer.elapsed_seconds, 10);
@@ -1165,6 +1166,642 @@ static void test_handle_game_session_key_undo_reverts_the_latest_edit(void)
     run_session_test(check_undo_reverts_the_latest_edit);
 }
 
+#define TEST_SOLVED_AT (TEST_START_TIME + 8)
+#define TEST_COMPLETED_AT (TEST_START_TIME + 10)
+#define TEST_SOLVE_MOVES 5 /* the five digits typed by solve_session */
+#define TEST_RESTART_AT 500
+#define TEST_NO_EDITS_YET 0
+
+static bool victory_states_match(const VictoryState* first,
+                                 const VictoryState* second)
+{
+    if (first->shown != second->shown || first->selected != second->selected)
+    {
+        return false;
+    }
+    for (int line = 0; line < VICTORY_SUMMARY_LINE_COUNT; line++)
+    {
+        if (strcmp(first->summary.lines[line], second->summary.lines[line]) !=
+            0)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int moves_of(const GamePort* game_port, const GameSession* session)
+{
+    return game_port->board_move_count_f(&session->board);
+}
+
+/* Solved, judged and completed by the timer update: the victory screen is
+ * open. */
+static void complete_session(const GamePort* game_port, GameSession* session)
+{
+    solve_session(game_port, session, TEST_SOLVED_AT);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+}
+
+static bool summary_line_is(const GameSession* session, VictorySummaryLine line,
+                            const char* expected)
+{
+    return strcmp(session->victory.summary.lines[line], expected) == 0;
+}
+
+/* A fresh game has no victory screen and no moves, whatever led to it. */
+static bool session_has_no_victory_or_moves(const GamePort* game_port,
+                                            const GameSession* session)
+{
+    return !is_victory_shown(&session->victory) &&
+           session->victory.selected == VICTORY_OPTION_NEW_GAME &&
+           moves_of(game_port, session) == 0 && session->board.move_count == 0;
+}
+
+static void test_init_game_session_hides_victory(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    bool started = start_session(game_port, &session, TEST_START_TIME);
+    bool clean =
+        started && session_has_no_victory_or_moves(game_port, &session);
+    if (started)
+    {
+        end_game_session(game_port, &session);
+    }
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_TRUE(clean);
+}
+
+static void check_no_victory_while_pending_or_wrong(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_START_TIME + 1));
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+
+    fill_without_confirming(game_port, session, TEST_START_TIME + 2);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_PENDING);
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_START_TIME + 3));
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+
+    const int make_wrong[] = {TEST_UP_KEY, TEST_DELETE_KEY, '8', TEST_RIGHT_KEY,
+                              TEST_ENTER_KEY};
+    press_all(game_port, session, make_wrong,
+              sizeof make_wrong / sizeof make_wrong[0], TEST_START_TIME + 4);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_WRONG);
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_START_TIME + 5));
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(session->timer.running);
+
+    const int make_correct[] = {TEST_UP_KEY, TEST_DELETE_KEY, '9',
+                                TEST_RIGHT_KEY, TEST_ENTER_KEY};
+    press_all(game_port, session, make_correct,
+              sizeof make_correct / sizeof make_correct[0],
+              TEST_START_TIME + 6);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_START_TIME + 7));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+}
+
+static void
+test_update_game_session_timer_pending_or_wrong_shows_no_victory(void)
+{
+    run_session_test(check_no_victory_while_pending_or_wrong);
+}
+
+static void check_completion_opens_victory(const GamePort* game_port,
+                                           GameSession* session)
+{
+    solve_session(game_port, session, TEST_SOLVED_AT);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_NEW_GAME);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->timer.running);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 10);
+}
+
+static void test_update_game_session_timer_completion_opens_victory(void)
+{
+    run_session_test(check_completion_opens_victory);
+}
+
+static void check_victory_opens_once(const GamePort* game_port,
+                                     GameSession* session)
+{
+    complete_session(game_port, session);
+    press(game_port, session, TEST_DOWN_KEY, TEST_COMPLETED_AT);
+    VictoryState victory = session->victory;
+    ASSERT_EQ_INT(victory.selected, VICTORY_OPTION_MAIN_MENU);
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT + 1));
+    ASSERT_FALSE(update_game_session_timer(game_port, session,
+                                           TEST_COMPLETED_AT + 1000));
+    ASSERT_TRUE(victory_states_match(&session->victory, &victory));
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 10);
+    ASSERT_TRUE(
+        summary_line_is(session, VICTORY_SUMMARY_TIME, "Time:       00:10"));
+}
+
+static void test_update_game_session_timer_victory_opens_once(void)
+{
+    run_session_test(check_victory_opens_once);
+}
+
+static void check_paused_game_opens_no_victory(const GamePort* game_port,
+                                               GameSession* session)
+{
+    solve_session(game_port, session, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    press(game_port, session, 'P', TEST_START_TIME + 5);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_FALSE(update_game_session_timer(game_port, session, 400));
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    press(game_port, session, TEST_ESCAPE, 600);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(update_game_session_timer(game_port, session, 602));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_TRUE(
+        summary_line_is(session, VICTORY_SUMMARY_TIME, "Time:       00:07"));
+}
+
+static void test_update_game_session_timer_paused_game_opens_no_victory(void)
+{
+    run_session_test(check_paused_game_opens_no_victory);
+}
+
+static const char* difficulty_line_of(int difficulty)
+{
+    switch (difficulty)
+    {
+        case DIFFICULTY_EASY:
+            return "Difficulty: Easy";
+        case DIFFICULTY_MEDIUM:
+            return "Difficulty: Medium";
+        default:
+            return "Difficulty: Hard";
+    }
+}
+
+static void check_victory_summary_for(int difficulty)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    game_port->difficulty = difficulty;
+    GameSession session;
+    if (!start_session(game_port, &session, TEST_START_TIME))
+    {
+        destroy_game_port(game_port);
+        ASSERT_TRUE(false);
+    }
+    solve_session(game_port, &session, TEST_START_TIME + 8);
+    bool completed =
+        update_game_session_timer(game_port, &session, TEST_START_TIME + 65);
+    VictoryState victory = session.victory;
+    int32_t recorded     = session.timer.elapsed_seconds;
+    int moves            = moves_of(game_port, &session);
+    char expected_time[TETONOR_ELAPSED_TEXT_SIZE];
+    bool formatted =
+        format_elapsed_time(recorded, expected_time, sizeof expected_time);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+
+    char time_line[VICTORY_SUMMARY_LINE_SIZE + VICTORY_SUMMARY_LABEL_W];
+    char moves_line[VICTORY_SUMMARY_LINE_SIZE + VICTORY_SUMMARY_LABEL_W];
+    snprintf(time_line, sizeof time_line, "%-*s%s", VICTORY_SUMMARY_LABEL_W,
+             "Time:", expected_time);
+    snprintf(moves_line, sizeof moves_line, "%-*s%d", VICTORY_SUMMARY_LABEL_W,
+             "Moves:", moves);
+    ASSERT_TRUE(completed);
+    ASSERT_TRUE(formatted);
+    ASSERT_EQ_INT(recorded, 65);
+    ASSERT_EQ_INT(moves, TEST_SOLVE_MOVES);
+    ASSERT_EQ_INT(
+        strcmp(victory.summary.lines[VICTORY_SUMMARY_TIME], time_line), 0);
+    ASSERT_EQ_INT(strcmp(victory.summary.lines[VICTORY_SUMMARY_TIME],
+                         "Time:       01:05"),
+                  0);
+    ASSERT_EQ_INT(
+        strcmp(victory.summary.lines[VICTORY_SUMMARY_MOVES], moves_line), 0);
+    ASSERT_EQ_INT(strcmp(victory.summary.lines[VICTORY_SUMMARY_DIFFICULTY],
+                         difficulty_line_of(difficulty)),
+                  0);
+}
+
+static void test_victory_summary_matches_the_finished_game(void)
+{
+    check_victory_summary_for(DIFFICULTY_EASY);
+    check_victory_summary_for(DIFFICULTY_MEDIUM);
+    check_victory_summary_for(DIFFICULTY_HARD);
+}
+
+static const int keys_the_victory_screen_ignores[] = {'0',
+                                                      '1',
+                                                      '5',
+                                                      '9',
+                                                      TEST_LEFT_KEY,
+                                                      TEST_RIGHT_KEY,
+                                                      '+',
+                                                      TEST_PAD_PLUS_KEY,
+                                                      'x',
+                                                      'X',
+                                                      '*',
+                                                      TEST_PAD_STAR_KEY,
+                                                      '\b',
+                                                      TEST_DELETE_KEY,
+                                                      TEST_BACKSPACE_KEY,
+                                                      TEST_PAD_ZERO_KEY,
+                                                      TEST_PAD_ENTER_KEY,
+                                                      'u',
+                                                      'U',
+                                                      'p',
+                                                      'P',
+                                                      'y',
+                                                      'Y',
+                                                      's',
+                                                      'S'};
+
+static void assert_victory_ignores(const GamePort* game_port,
+                                   GameSession* session, const int* keys,
+                                   size_t count)
+{
+    Board board_before   = session->board;
+    GameTimer timer      = session->timer;
+    PauseState pause     = session->pause;
+    VictoryState victory = session->victory;
+    int moves            = moves_of(game_port, session);
+    for (size_t i = 0; i < count; i++)
+    {
+        GameSessionOutcome outcome =
+            press(game_port, session, keys[i], TEST_START_TIME + 1000);
+        ASSERT_EQ_INT(outcome, GAME_SESSION_CONTINUE);
+        ASSERT_TRUE(boards_match(&session->board, &board_before));
+        ASSERT_EQ_INT(moves_of(game_port, session), moves);
+        ASSERT_TRUE(timers_match(&session->timer, &timer));
+        ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+        ASSERT_TRUE(victory_states_match(&session->victory, &victory));
+        ASSERT_FALSE(session->undo_notice);
+    }
+}
+
+static void
+check_victory_ignores_board_and_pause_keys(const GamePort* game_port,
+                                           GameSession* session)
+{
+    complete_session(game_port, session);
+    assert_victory_ignores(game_port, session, keys_the_victory_screen_ignores,
+                           sizeof keys_the_victory_screen_ignores /
+                               sizeof keys_the_victory_screen_ignores[0]);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->timer.running);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME + 1000);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_MAIN_MENU);
+    assert_victory_ignores(game_port, session, keys_the_victory_screen_ignores,
+                           sizeof keys_the_victory_screen_ignores /
+                               sizeof keys_the_victory_screen_ignores[0]);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_MAIN_MENU);
+}
+
+static void
+test_handle_game_session_key_victory_ignores_board_and_pause_keys(void)
+{
+    run_session_test(check_victory_ignores_board_and_pause_keys);
+}
+
+static void check_victory_navigation(const GamePort* game_port,
+                                     GameSession* session)
+{
+    complete_session(game_port, session);
+    Board board_before = session->board;
+    ASSERT_EQ_INT(press(game_port, session, TEST_UP_KEY, TEST_COMPLETED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_NEW_GAME);
+    ASSERT_EQ_INT(press(game_port, session, TEST_DOWN_KEY, TEST_COMPLETED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_MAIN_MENU);
+    ASSERT_EQ_INT(press(game_port, session, TEST_DOWN_KEY, TEST_COMPLETED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_MAIN_MENU);
+    ASSERT_EQ_INT(press(game_port, session, TEST_UP_KEY, TEST_COMPLETED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_NEW_GAME);
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(boards_match(&session->board, &board_before));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+}
+
+static void test_handle_game_session_key_victory_navigation(void)
+{
+    run_session_test(check_victory_navigation);
+}
+
+/* Presses key on the victory screen of a completed game and checks that a
+ * fresh game started without asking. */
+static void assert_victory_key_starts_new_game(const GamePort* game_port,
+                                               GameSession* session, int key)
+{
+    complete_session(game_port, session);
+    const NumberGeneration* old = session->puzzle;
+    ASSERT_EQ_INT(moves_of(game_port, session), TEST_SOLVE_MOVES);
+    ASSERT_EQ_INT(press(game_port, session, key, TEST_RESTART_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(fake_generate_calls, 2);
+    ASSERT_EQ_INT(fake_free_calls, 1);
+    ASSERT_TRUE(session->puzzle != old);
+    ASSERT_TRUE(session_is_fresh(session, TEST_RESTART_AT));
+    ASSERT_TRUE(session_has_no_victory_or_moves(game_port, session));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(session->pause.pending, GAME_ACTION_NONE);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_PENDING);
+    ASSERT_TRUE(session->timer.running);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 0);
+}
+
+static void check_victory_lower_n_starts_new_game(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    assert_victory_key_starts_new_game(game_port, session, 'n');
+}
+
+static void check_victory_upper_n_starts_new_game(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    assert_victory_key_starts_new_game(game_port, session, 'N');
+}
+
+static void check_victory_enter_starts_new_game(const GamePort* game_port,
+                                                GameSession* session)
+{
+    assert_victory_key_starts_new_game(game_port, session, TEST_ENTER_KEY);
+}
+
+static void check_victory_space_starts_new_game(const GamePort* game_port,
+                                                GameSession* session)
+{
+    assert_victory_key_starts_new_game(game_port, session, ' ');
+}
+
+static void test_handle_game_session_key_victory_new_game(void)
+{
+    run_session_test(check_victory_lower_n_starts_new_game);
+    run_session_test(check_victory_upper_n_starts_new_game);
+    run_session_test(check_victory_enter_starts_new_game);
+    run_session_test(check_victory_space_starts_new_game);
+}
+
+static void assert_victory_key_leaves(const GamePort* game_port,
+                                      GameSession* session, const int* keys,
+                                      size_t count)
+{
+    complete_session(game_port, session);
+    GameSessionOutcome outcome = GAME_SESSION_CONTINUE;
+    for (size_t i = 0; i < count; i++)
+    {
+        outcome = press(game_port, session, keys[i], TEST_RESTART_AT);
+    }
+    ASSERT_EQ_INT(outcome, GAME_SESSION_LEAVE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(session->pause.pending, GAME_ACTION_NONE);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+    ASSERT_EQ_INT(fake_free_calls, 0);
+}
+
+static void check_victory_lower_m_leaves(const GamePort* game_port,
+                                         GameSession* session)
+{
+    const int keys[] = {'m'};
+    assert_victory_key_leaves(game_port, session, keys, 1);
+}
+
+static void check_victory_upper_m_leaves(const GamePort* game_port,
+                                         GameSession* session)
+{
+    const int keys[] = {'M'};
+    assert_victory_key_leaves(game_port, session, keys, 1);
+}
+
+static void check_victory_escape_leaves(const GamePort* game_port,
+                                        GameSession* session)
+{
+    const int keys[] = {TEST_ESCAPE};
+    assert_victory_key_leaves(game_port, session, keys, 1);
+}
+
+static void check_victory_down_enter_leaves(const GamePort* game_port,
+                                            GameSession* session)
+{
+    const int keys[] = {TEST_DOWN_KEY, TEST_ENTER_KEY};
+    assert_victory_key_leaves(game_port, session, keys, 2);
+}
+
+static void check_victory_down_space_leaves(const GamePort* game_port,
+                                            GameSession* session)
+{
+    const int keys[] = {TEST_DOWN_KEY, ' '};
+    assert_victory_key_leaves(game_port, session, keys, 2);
+}
+
+static void test_handle_game_session_key_victory_main_menu(void)
+{
+    run_session_test(check_victory_lower_m_leaves);
+    run_session_test(check_victory_upper_m_leaves);
+    run_session_test(check_victory_escape_leaves);
+    run_session_test(check_victory_down_enter_leaves);
+    run_session_test(check_victory_down_space_leaves);
+}
+
+static void assert_victory_new_game_failure(const GamePort* game_port,
+                                            GameSession* session,
+                                            const int* keys, size_t count)
+{
+    complete_session(game_port, session);
+    Board board_before             = session->board;
+    VictoryState victory           = session->victory;
+    GameTimer timer                = session->timer;
+    const NumberGeneration* puzzle = session->puzzle;
+    fake_generate_fails            = true;
+    GameSessionOutcome outcome     = GAME_SESSION_RESTARTED;
+    for (size_t i = 0; i < count; i++)
+    {
+        outcome = press(game_port, session, keys[i], TEST_RESTART_AT);
+    }
+    ASSERT_EQ_INT(outcome, GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(fake_generate_calls, 2);
+    ASSERT_EQ_INT(fake_free_calls, 0);
+    ASSERT_TRUE(session->puzzle == puzzle);
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(victory_states_match(&session->victory, &victory));
+    ASSERT_TRUE(boards_match(&session->board, &board_before));
+    ASSERT_TRUE(timers_match(&session->timer, &timer));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+
+    fake_generate_fails = false;
+    ASSERT_EQ_INT(press(game_port, session, 'n', TEST_RESTART_AT + 1),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_TRUE(session_is_fresh(session, TEST_RESTART_AT + 1));
+    ASSERT_TRUE(session_has_no_victory_or_moves(game_port, session));
+}
+
+static void check_victory_new_game_key_failure(const GamePort* game_port,
+                                               GameSession* session)
+{
+    const int keys[] = {'N'};
+    assert_victory_new_game_failure(game_port, session, keys, 1);
+}
+
+static void check_victory_new_game_select_failure(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    const int keys[] = {TEST_ENTER_KEY};
+    assert_victory_new_game_failure(game_port, session, keys, 1);
+}
+
+static void
+test_handle_game_session_key_victory_new_game_failure_keeps_summary(void)
+{
+    run_session_test(check_victory_new_game_key_failure);
+    run_session_test(check_victory_new_game_select_failure);
+}
+
+static void check_victory_unknown_keys_change_nothing(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    complete_session(game_port, session);
+    assert_victory_ignores(game_port, session, keys_nobody_binds,
+                           sizeof keys_nobody_binds /
+                               sizeof keys_nobody_binds[0]);
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+}
+
+static void
+test_handle_game_session_key_victory_unknown_keys_change_nothing(void)
+{
+    run_session_test(check_victory_unknown_keys_change_nothing);
+}
+
+static void check_victory_again_after_new_game(const GamePort* game_port,
+                                               GameSession* session)
+{
+    complete_session(game_port, session);
+    ASSERT_EQ_INT(press(game_port, session, 'N', 200), GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_FALSE(update_game_session_timer(game_port, session, 201));
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+
+    solve_session(game_port, session, 205);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(update_game_session_timer(game_port, session, 207));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_EQ_INT(session->victory.selected, VICTORY_OPTION_NEW_GAME);
+    ASSERT_TRUE(
+        summary_line_is(session, VICTORY_SUMMARY_TIME, "Time:       00:07"));
+    ASSERT_TRUE(
+        summary_line_is(session, VICTORY_SUMMARY_MOVES, "Moves:      5"));
+    ASSERT_EQ_INT(moves_of(game_port, session), TEST_SOLVE_MOVES);
+    ASSERT_FALSE(update_game_session_timer(game_port, session, 208));
+}
+
+static void test_victory_again_after_new_game(void)
+{
+    run_session_test(check_victory_again_after_new_game);
+}
+
+static void check_moves_through_the_session(const GamePort* game_port,
+                                            GameSession* session)
+{
+    ASSERT_EQ_INT(moves_of(game_port, session), TEST_NO_EDITS_YET);
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_EQ_INT(session->board.history.count, 1);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    press(game_port, session, 'p', TEST_START_TIME + 3);
+    press(game_port, session, TEST_ESCAPE, TEST_START_TIME + 4);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME + 5);
+    ASSERT_EQ_INT(moves_of(game_port, session), 3);
+}
+
+static void test_handle_game_session_key_undo_keeps_the_move_count(void)
+{
+    run_session_test(check_moves_through_the_session);
+}
+
+static void check_restart_button_resets_moves(const GamePort* game_port,
+                                              GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, 300),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_TRUE(session_is_fresh(session, 300));
+    ASSERT_TRUE(session_has_no_victory_or_moves(game_port, session));
+}
+
+static void check_new_game_prompt_resets_moves(const GamePort* game_port,
+                                               GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    ASSERT_EQ_INT(press(game_port, session, 'y', 301), GAME_SESSION_RESTARTED);
+    ASSERT_TRUE(session_is_fresh(session, 301));
+    ASSERT_TRUE(session_has_no_victory_or_moves(game_port, session));
+}
+
+static void check_failed_new_game_keeps_moves(const GamePort* game_port,
+                                              GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    fake_generate_fails = true;
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'y', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+}
+
+static void test_restart_button_and_n_reset_moves_and_victory(void)
+{
+    run_session_test(check_restart_button_resets_moves);
+    run_session_test(check_new_game_prompt_resets_moves);
+    run_session_test(check_failed_new_game_keeps_moves);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_game_session_starts_playing);
@@ -1197,5 +1834,21 @@ int main(void)
     RUN_TEST(test_handle_game_session_key_game_shortcuts_ignored_while_paused);
     RUN_TEST(test_handle_game_session_key_undo_notice_cleared_by_next_key);
     RUN_TEST(test_handle_game_session_key_undo_reverts_the_latest_edit);
+    RUN_TEST(test_init_game_session_hides_victory);
+    RUN_TEST(test_update_game_session_timer_pending_or_wrong_shows_no_victory);
+    RUN_TEST(test_update_game_session_timer_completion_opens_victory);
+    RUN_TEST(test_update_game_session_timer_victory_opens_once);
+    RUN_TEST(test_update_game_session_timer_paused_game_opens_no_victory);
+    RUN_TEST(test_victory_summary_matches_the_finished_game);
+    RUN_TEST(test_handle_game_session_key_victory_ignores_board_and_pause_keys);
+    RUN_TEST(test_handle_game_session_key_victory_navigation);
+    RUN_TEST(test_handle_game_session_key_victory_new_game);
+    RUN_TEST(test_handle_game_session_key_victory_main_menu);
+    RUN_TEST(
+        test_handle_game_session_key_victory_new_game_failure_keeps_summary);
+    RUN_TEST(test_handle_game_session_key_victory_unknown_keys_change_nothing);
+    RUN_TEST(test_victory_again_after_new_game);
+    RUN_TEST(test_handle_game_session_key_undo_keeps_the_move_count);
+    RUN_TEST(test_restart_button_and_n_reset_moves_and_victory);
     return test_harness_result();
 }

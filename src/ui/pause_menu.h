@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "game_action.h"
+
 typedef enum
 {
     PAUSE_SCREEN_PLAYING, /* not paused: the board takes the keys */
@@ -23,14 +25,6 @@ typedef enum
     PROMPT_OPTION_NO,
     PROMPT_OPTION_COUNT
 } PromptOption;
-
-/* What the caller must do now. */
-typedef enum
-{
-    GAME_ACTION_NONE,
-    GAME_ACTION_NEW_GAME,
-    GAME_ACTION_MAIN_MENU /* abandon the game */
-} GameAction;
 
 typedef enum
 {

@@ -427,6 +427,38 @@ static void print_prompt_panel(const PauseState* pause, int rows, int cols)
     print_panel_text(panel, LAYOUT_PROMPT_BACK_ROW, LAYOUT_PROMPT_BACK_HINT);
 }
 
+void print_victory_screen(const VictoryState* victory)
+{
+    int rows = 0;
+    int cols = 0;
+    getmaxyx(stdscr, rows, cols);
+    if (!layout_fits(rows, cols))
+    {
+        mvprintw(0, 0, LAYOUT_ENLARGE_FORMAT, LAYOUT_MIN_COLS, LAYOUT_MIN_ROWS);
+        return;
+    }
+    LayoutPoint panel = layout_centered_window_origin(
+        rows, cols, LAYOUT_VICTORY_H, LAYOUT_VICTORY_W);
+    draw_box(panel.y, panel.x, LAYOUT_VICTORY_H, LAYOUT_VICTORY_W);
+    print_panel_title(panel, LAYOUT_VICTORY_W, LAYOUT_VICTORY_TITLE_ROW,
+                      LAYOUT_VICTORY_TITLE);
+    for (int line = 0; line < VICTORY_SUMMARY_LINE_COUNT; line++)
+    {
+        print_panel_text(panel, layout_victory_summary_row(line),
+                         victory->summary.lines[line]);
+    }
+    for (int option = 0; option < VICTORY_OPTION_COUNT; option++)
+    {
+        print_panel_option(panel, layout_victory_option_row(option),
+                           victory_option_label(option),
+                           option == (int)victory->selected);
+    }
+    print_panel_text(panel, LAYOUT_VICTORY_CHOOSE_ROW,
+                     LAYOUT_VICTORY_CHOOSE_HINT);
+    print_panel_text(panel, LAYOUT_VICTORY_SHORTCUT_ROW,
+                     LAYOUT_VICTORY_SHORTCUT_HINT);
+}
+
 void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds)
 {
     int rows = 0;

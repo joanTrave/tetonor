@@ -1,6 +1,7 @@
 #include "board.h"
 #include "answer_check.h"
 
+#include <limits.h>
 #include <stddef.h>
 
 static void apply_slot_input(Board* board, BoardInput input);
@@ -34,6 +35,7 @@ static bool entries_changed(const Board* board, const BoardSnapshot* snapshot);
 static void clear_move_history(MoveHistory* history);
 static void push_move(MoveHistory* history, const BoardSnapshot* snapshot);
 static void pop_move(MoveHistory* history, BoardSnapshot* out);
+static void count_move(Board* board);
 
 void init_board(Board* board, const NumberGeneration* puzzle)
 {
@@ -54,6 +56,7 @@ void init_board(Board* board, const NumberGeneration* puzzle)
                                                        : BOARD_FOCUS_GROUP;
     init_palette(&board->palette);
     clear_move_history(&board->history);
+    board->move_count = 0;
     refresh_slot_usages(board);
 }
 
@@ -105,6 +108,7 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
     if (entries_changed(board, &before))
     {
         push_move(&board->history, &before);
+        count_move(board);
     }
     refresh_slot_usages(board);
     return event;
@@ -131,6 +135,11 @@ bool is_board_locked(const Board* board)
 bool board_progress_would_be_lost(const Board* board)
 {
     return !is_board_locked(board) && board->history.count > 0;
+}
+
+int board_move_count(const Board* board)
+{
+    return board->move_count;
 }
 
 static void apply_slot_input(Board* board, BoardInput input)
@@ -533,4 +542,12 @@ static void pop_move(MoveHistory* history, BoardSnapshot* out)
     history->newest = (history->newest + TETONOR_UNDO_HISTORY_DEPTH - 1) %
                       TETONOR_UNDO_HISTORY_DEPTH;
     history->count--;
+}
+
+static void count_move(Board* board)
+{
+    if (board->move_count < INT_MAX)
+    {
+        board->move_count++;
+    }
 }
