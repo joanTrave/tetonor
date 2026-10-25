@@ -882,6 +882,128 @@ static void test_menus_ignore_game_shortcuts(void)
     }
 }
 
+static void test_victory_menu_command_from_key_maps_navigation(void)
+{
+    ASSERT_EQ_INT(victory_menu_command_from_key(TEST_UP_KEY, &menu_codes),
+                  VICTORY_MENU_COMMAND_UP);
+    ASSERT_EQ_INT(victory_menu_command_from_key(TEST_DOWN_KEY, &menu_codes),
+                  VICTORY_MENU_COMMAND_DOWN);
+    const int select_keys[] = {' ', '\n', '\r', TEST_ENTER_KEY};
+    for (size_t i = 0; i < sizeof select_keys / sizeof select_keys[0]; i++)
+    {
+        ASSERT_EQ_INT(
+            victory_menu_command_from_key(select_keys[i], &menu_codes),
+            VICTORY_MENU_COMMAND_SELECT);
+    }
+}
+
+static void test_victory_menu_command_from_key_maps_shortcuts(void)
+{
+    const int new_game_keys[] = {'n', 'N'};
+    for (size_t i = 0; i < sizeof new_game_keys / sizeof new_game_keys[0]; i++)
+    {
+        ASSERT_EQ_INT(
+            victory_menu_command_from_key(new_game_keys[i], &menu_codes),
+            VICTORY_MENU_COMMAND_NEW_GAME);
+    }
+    const int main_menu_keys[] = {'m', 'M', TETONOR_KEY_ESCAPE,
+                                  TEST_ESCAPE_LITERAL};
+    for (size_t i = 0; i < sizeof main_menu_keys / sizeof main_menu_keys[0];
+         i++)
+    {
+        ASSERT_EQ_INT(
+            victory_menu_command_from_key(main_menu_keys[i], &menu_codes),
+            VICTORY_MENU_COMMAND_MAIN_MENU);
+    }
+}
+
+static void test_victory_menu_command_from_key_ignores_other_keys(void)
+{
+    const int keys[] = {'p',
+                        'P',
+                        'u',
+                        'U',
+                        'y',
+                        'Y',
+                        'q',
+                        's',
+                        'S',
+                        '0',
+                        '5',
+                        '9',
+                        '+',
+                        'x',
+                        'X',
+                        '*',
+                        '\b',
+                        TETONOR_KEY_DELETE,
+                        TEST_BACKSPACE_KEY,
+                        TEST_PAD_ENTER_KEY,
+                        TEST_PAD_ZERO_KEY,
+                        TEST_PAD_PLUS_KEY,
+                        TEST_PAD_STAR_KEY,
+                        TEST_LEFT_KEY,
+                        TEST_RIGHT_KEY,
+                        TEST_HOME_KEY,
+                        TEST_PAGE_DOWN_KEY,
+                        TEST_RESIZE_KEY,
+                        0,
+                        TEST_ERR_KEY,
+                        TETONOR_KEY_UNAVAILABLE};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(victory_menu_command_from_key(keys[i], &menu_codes),
+                      VICTORY_MENU_COMMAND_NONE);
+    }
+}
+
+static void
+test_victory_menu_command_from_key_unavailable_codes_never_match(void)
+{
+    ASSERT_EQ_INT(victory_menu_command_from_key(TETONOR_KEY_UNAVAILABLE,
+                                                &unavailable_menu_codes),
+                  VICTORY_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        victory_menu_command_from_key(TEST_UP_KEY, &unavailable_menu_codes),
+        VICTORY_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        victory_menu_command_from_key(TEST_DOWN_KEY, &unavailable_menu_codes),
+        VICTORY_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        victory_menu_command_from_key(TEST_ENTER_KEY, &unavailable_menu_codes),
+        VICTORY_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(victory_menu_command_from_key(' ', &unavailable_menu_codes),
+                  VICTORY_MENU_COMMAND_SELECT);
+    ASSERT_EQ_INT(victory_menu_command_from_key('n', &unavailable_menu_codes),
+                  VICTORY_MENU_COMMAND_NEW_GAME);
+    ASSERT_EQ_INT(victory_menu_command_from_key('M', &unavailable_menu_codes),
+                  VICTORY_MENU_COMMAND_MAIN_MENU);
+}
+
+static void test_victory_keys_leave_the_other_screens_unchanged(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key('n', &menu_codes),
+                  PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(pause_menu_command_from_key('m', &menu_codes),
+                  PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(pause_menu_command_from_key('p', &menu_codes),
+                  PAUSE_MENU_COMMAND_RESUME);
+    ASSERT_EQ_INT(prompt_command_from_key('n', &menu_codes), PROMPT_COMMAND_NO);
+    ASSERT_EQ_INT(prompt_command_from_key('m', &menu_codes),
+                  PROMPT_COMMAND_NONE);
+    ASSERT_EQ_INT(board_command_from_key('p', &test_codes).kind,
+                  BOARD_COMMAND_PAUSE);
+    ASSERT_EQ_INT(board_command_from_key('n', &test_codes).kind,
+                  BOARD_COMMAND_NEW_GAME);
+    ASSERT_EQ_INT(board_command_from_key('M', &test_codes).kind,
+                  BOARD_COMMAND_MAIN_MENU);
+    ASSERT_EQ_INT(
+        difficulty_menu_command_from_key(TETONOR_KEY_ESCAPE, &menu_codes),
+        DIFFICULTY_COMMAND_BACK);
+    ASSERT_EQ_INT(stats_menu_command_from_key(TETONOR_KEY_ESCAPE),
+                  STATS_MENU_COMMAND_BACK);
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -946,5 +1068,10 @@ int main(void)
     RUN_TEST(test_prompt_command_from_key_ignores_other_keys);
     RUN_TEST(test_prompt_command_from_key_unavailable_codes_never_match);
     RUN_TEST(test_menus_ignore_game_shortcuts);
+    RUN_TEST(test_victory_menu_command_from_key_maps_navigation);
+    RUN_TEST(test_victory_menu_command_from_key_maps_shortcuts);
+    RUN_TEST(test_victory_menu_command_from_key_ignores_other_keys);
+    RUN_TEST(test_victory_menu_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(test_victory_keys_leave_the_other_screens_unchanged);
     return test_harness_result();
 }

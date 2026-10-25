@@ -151,6 +151,16 @@ int layout_prompt_option_row(int option)
     return LAYOUT_PROMPT_FIRST_OPTION_ROW + option;
 }
 
+int layout_victory_summary_row(int line)
+{
+    return LAYOUT_VICTORY_FIRST_SUMMARY_ROW + line;
+}
+
+int layout_victory_option_row(int option)
+{
+    return LAYOUT_VICTORY_FIRST_OPTION_ROW + option;
+}
+
 int layout_stats_row(int difficulty)
 {
     return LAYOUT_STATS_FIRST_ROW + difficulty;

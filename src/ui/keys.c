@@ -103,6 +103,33 @@ PromptCommand prompt_command_from_key(int key, const MenuKeyCodes* key_codes)
     return PROMPT_COMMAND_NONE;
 }
 
+VictoryMenuCommand victory_menu_command_from_key(int key,
+                                                 const MenuKeyCodes* key_codes)
+{
+    if (key_matches(key, key_codes->up))
+    {
+        return VICTORY_MENU_COMMAND_UP;
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return VICTORY_MENU_COMMAND_DOWN;
+    }
+    if (is_select_key(key, key_codes))
+    {
+        return VICTORY_MENU_COMMAND_SELECT;
+    }
+    if (key == TETONOR_KEY_NEW_GAME || key == TETONOR_KEY_NEW_GAME_UPPER)
+    {
+        return VICTORY_MENU_COMMAND_NEW_GAME;
+    }
+    if (key == TETONOR_KEY_MAIN_MENU || key == TETONOR_KEY_MAIN_MENU_UPPER ||
+        key == TETONOR_KEY_ESCAPE)
+    {
+        return VICTORY_MENU_COMMAND_MAIN_MENU;
+    }
+    return VICTORY_MENU_COMMAND_NONE;
+}
+
 static BoardCommand make_board_command(BoardCommandKind kind,
                                        BoardInputKind input_kind, int digit)
 {

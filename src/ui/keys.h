@@ -5,6 +5,7 @@
 #include "menu.h"
 #include "pause_menu.h"
 #include "stats_menu.h"
+#include "victory_menu.h"
 #include "../game/game_port.h"
 
 enum
@@ -97,6 +98,11 @@ PauseMenuCommand pause_menu_command_from_key(int key,
 /* Maps a key to a confirmation-prompt command. Unknown keys give
  * PROMPT_COMMAND_NONE. */
 PromptCommand prompt_command_from_key(int key, const MenuKeyCodes* key_codes);
+
+/* Maps a key to a victory-screen command. Unknown keys give
+ * VICTORY_MENU_COMMAND_NONE. */
+VictoryMenuCommand victory_menu_command_from_key(int key,
+                                                 const MenuKeyCodes* key_codes);
 
 /* Maps a key to a board command. Unknown keys give BOARD_COMMAND_NONE. */
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes);

@@ -53,8 +53,9 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store)
                 apply_palette_styles(&session.board.palette);
             }
         }
-        /* A game completes once, and is recorded then. A failed save is
-         * ignored: the game goes on and the next completion tries again. */
+        /* A game completes once: it is recorded then and the victory screen
+         * opens. A failed save is ignored: the screen still shows and the next
+         * completion tries again. */
         if (update_game_session_timer(game_port, &session, now))
         {
             record_stats_store_game(stats_store, game_port->difficulty,
@@ -117,7 +118,11 @@ static MenuKeyCodes menu_key_codes(void)
 static void draw_board(const GameSession* session)
 {
     erase();
-    if (is_game_paused(&session->pause))
+    if (is_victory_shown(&session->victory))
+    {
+        print_victory_screen(&session->victory);
+    }
+    else if (is_game_paused(&session->pause))
     {
         print_pause_screen(&session->pause, session->timer.elapsed_seconds);
     }

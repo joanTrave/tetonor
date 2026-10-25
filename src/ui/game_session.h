@@ -6,6 +6,7 @@
 
 #include "keys.h"
 #include "pause_menu.h"
+#include "victory_menu.h"
 #include "../game/game_port.h"
 
 typedef enum
@@ -22,13 +23,15 @@ typedef struct
     Board board;
     GameTimer timer;
     PauseState pause;
-    bool undo_notice; /* set by an empty undo, cleared by the next key */
+    VictoryState victory; /* shown once the game completes */
+    bool undo_notice;     /* set by an empty undo, cleared by the next key */
     BoardKeyCodes board_key_codes;
     MenuKeyCodes menu_key_codes;
 } GameSession;
 
 /* Generates a puzzle through the port, starts the board, the timer (at now)
- * and an unpaused state. Returns false, owning nothing, when generation fails.
+ * and an unpaused state with no victory screen. Returns false, owning nothing,
+ * when generation fails.
  */
 bool init_game_session(const GamePort* game_port, GameSession* session,
                        const BoardKeyCodes* board_key_codes,
@@ -38,13 +41,14 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
  * does nothing. */
 void end_game_session(const GamePort* game_port, GameSession* session);
 
-/* Applies one key on the current screen (game, pause menu or prompt). The
- * timer is paused while the menu or a prompt is shown. */
+/* Applies one key on the current screen (game, pause menu, prompt or victory
+ * screen). The timer is paused while the menu or a prompt is shown. */
 GameSessionOutcome handle_game_session_key(const GamePort* game_port,
                                            GameSession* session, int key,
                                            time_t now);
 
-/* Advances the timer; true exactly once, when the game completes. */
+/* Advances the timer; true exactly once, when the game completes, which also
+ * opens the victory screen with the game's summary. */
 bool update_game_session_timer(const GamePort* game_port, GameSession* session,
                                time_t now);
 

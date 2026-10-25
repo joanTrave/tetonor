@@ -87,6 +87,16 @@
 #define LAYOUT_PROMPT_WARNING "Progress in this game will be lost."
 #define LAYOUT_PROMPT_CHOOSE_HINT "Y or N, or UP/DOWN and SPACE or ENTER"
 #define LAYOUT_PROMPT_BACK_HINT "Press ESC to cancel"
+#define LAYOUT_VICTORY_H 13
+#define LAYOUT_VICTORY_W LAYOUT_MENU_W
+#define LAYOUT_VICTORY_TITLE_ROW 1
+#define LAYOUT_VICTORY_FIRST_SUMMARY_ROW 3
+#define LAYOUT_VICTORY_FIRST_OPTION_ROW 7
+#define LAYOUT_VICTORY_CHOOSE_ROW 10
+#define LAYOUT_VICTORY_SHORTCUT_ROW 11
+#define LAYOUT_VICTORY_TITLE "Puzzle solved!"
+#define LAYOUT_VICTORY_CHOOSE_HINT LAYOUT_PAUSE_CHOOSE_HINT
+#define LAYOUT_VICTORY_SHORTCUT_HINT "N new game   M or ESC main menu"
 #define LAYOUT_STATS_MENU_H 10
 #define LAYOUT_STATS_MENU_W LAYOUT_MENU_W
 #define LAYOUT_STATS_TITLE_ROW 1
@@ -159,6 +169,10 @@ int layout_help_width(void);
 /* Window row of a pause-menu option / a prompt option. */
 int layout_pause_option_row(int option);
 int layout_prompt_option_row(int option);
+
+/* Window row of a summary line / an option on the victory screen. */
+int layout_victory_summary_row(int line);
+int layout_victory_option_row(int option);
 
 /* Window row of a level's line on the statistics screen. */
 int layout_stats_row(int difficulty);
