@@ -20,8 +20,9 @@ static void print_confirm_button(const Board* board);
 static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
 static void print_undo_notice(void);
+static void print_timer(int32_t elapsed_seconds);
 
-void print_layout(const Board* board, bool undo_notice)
+void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
 {
     int rows = 0;
     int cols = 0;
@@ -35,6 +36,7 @@ void print_layout(const Board* board, bool undo_notice)
     print_available_array(board);
     print_confirm_button(board);
     print_restart_button(board);
+    print_timer(elapsed_seconds);
     print_result(board);
     if (undo_notice)
     {
@@ -339,4 +341,12 @@ static void print_undo_notice(void)
     attr_on(A_BOLD, NULL);
     mvprintw(origin.y, origin.x, "%s", LAYOUT_UNDO_EMPTY_MESSAGE);
     attr_off(A_BOLD, NULL);
+}
+
+static void print_timer(int32_t elapsed_seconds)
+{
+    char text[TETONOR_ELAPSED_TEXT_SIZE];
+    format_elapsed_time(elapsed_seconds, text, sizeof text);
+    LayoutPoint origin = layout_timer_origin();
+    mvprintw(origin.y, origin.x, "%s%s", LAYOUT_TIMER_LABEL, text);
 }

@@ -976,6 +976,36 @@ static void test_restart_game_with_real_port_empties_move_history(void)
     ASSERT_FALSE(undone);
 }
 
+static void test_create_game_port_wires_timer_functions(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool start_wired  = game_port->start_game_timer_f == start_game_timer;
+    bool update_wired = game_port->update_game_timer_f == update_game_timer;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(start_wired);
+    ASSERT_TRUE(update_wired);
+}
+
+static void test_game_port_timer_through_port_completes_once(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    GameTimer timer;
+    game_port->start_game_timer_f(&timer, 100);
+    bool pending_completes =
+        game_port->update_game_timer_f(&timer, BOARD_RESULT_PENDING, 105);
+    bool first_completes =
+        game_port->update_game_timer_f(&timer, BOARD_RESULT_CORRECT, 112);
+    bool second_completes =
+        game_port->update_game_timer_f(&timer, BOARD_RESULT_CORRECT, 200);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(pending_completes);
+    ASSERT_TRUE(first_completes);
+    ASSERT_FALSE(second_completes);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 12);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -1008,5 +1038,7 @@ int main(void)
     RUN_TEST(test_restart_game_empties_move_history);
     RUN_TEST(test_restart_game_failure_keeps_move_history);
     RUN_TEST(test_restart_game_with_real_port_empties_move_history);
+    RUN_TEST(test_create_game_port_wires_timer_functions);
+    RUN_TEST(test_game_port_timer_through_port_completes_once);
     return test_harness_result();
 }

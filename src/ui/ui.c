@@ -1,58 +1,120 @@
 #include <curses.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "ui.h"
 #include "keys.h"
 #include "print_layout.h"
+#include "read_timeout.h"
 #include "style.h"
 
-static BoardKeyCodes board_key_codes(void);
-static void draw_board(const Board* board, bool undo_notice);
-
-int ui_run(const GamePort* game_port)
+/* Everything one running game owns; the board points into puzzle. */
+typedef struct
 {
-    NumberGeneration* number_generation =
+    NumberGeneration* puzzle;
+    Board board;
+    GameTimer timer;
+    bool undo_notice; /* set by an empty undo, cleared by the next key */
+    BoardKeyCodes key_codes;
+} GameSession;
+
+static BoardKeyCodes board_key_codes(void);
+static void draw_board(const GameSession* session);
+static bool handle_key(const GamePort* game_port, GameSession* session, int key,
+                       time_t now);
+static void update_timer(const GamePort* game_port, GameSession* session,
+                         StatsStore* stats_store, time_t now);
+
+int ui_run(const GamePort* game_port, StatsStore* stats_store)
+{
+    GameSession session;
+    session.puzzle =
         game_port->generate_random_numbers_f(game_port->difficulty);
-    if (number_generation == NULL)
+    if (session.puzzle == NULL)
     {
         return EXIT_FAILURE;
     }
 
-    Board board;
-    game_port->init_board_f(&board, number_generation);
-    apply_palette_styles(&board.palette);
-    BoardKeyCodes key_codes = board_key_codes();
-    draw_board(&board, false);
+    game_port->init_board_f(&session.board, session.puzzle);
+    apply_palette_styles(&session.board.palette);
+    session.key_codes   = board_key_codes();
+    session.undo_notice = false;
+    game_port->start_game_timer_f(&session.timer, time(NULL));
+    ReadTimeoutWatch watch;
+    init_read_timeout_watch(&watch);
 
-    int key = getch();
-    while (key != ERR)
+    timeout(TETONOR_READ_TIMEOUT_MS);
+    int32_t drawn_seconds = session.timer.elapsed_seconds;
+    draw_board(&session);
+    for (;;)
     {
-        BoardCommand command = board_command_from_key(key, &key_codes);
-        if (command.kind == BOARD_COMMAND_EXIT)
+        int key    = getch();
+        time_t now = time(NULL);
+        bool keyed = key != ERR;
+        if (!keyed && note_read_error(&watch, now))
         {
             break;
         }
-        bool undo_notice = false;
-        if (command.kind == BOARD_COMMAND_UNDO)
+        if (keyed)
         {
-            undo_notice = !game_port->undo_board_move_f(&board);
-        }
-        if (command.kind == BOARD_COMMAND_INPUT)
-        {
-            BoardEvent event =
-                game_port->apply_board_input_f(&board, command.input);
-            if (event == BOARD_EVENT_RESTART &&
-                restart_game(game_port, &board, &number_generation))
+            note_key_read(&watch);
+            if (!handle_key(game_port, &session, key, now))
             {
-                apply_palette_styles(&board.palette);
+                break;
             }
         }
-        draw_board(&board, undo_notice);
-        key = getch();
+        update_timer(game_port, &session, stats_store, now);
+        if (keyed || session.timer.elapsed_seconds != drawn_seconds)
+        {
+            drawn_seconds = session.timer.elapsed_seconds;
+            draw_board(&session);
+        }
     }
 
-    game_port->free_number_generation_f(number_generation);
+    timeout(-1);
+    game_port->free_number_generation_f(session.puzzle);
     return EXIT_SUCCESS;
+}
+
+/* Applies one key. Returns false when the player left the game. */
+static bool handle_key(const GamePort* game_port, GameSession* session, int key,
+                       time_t now)
+{
+    BoardCommand command = board_command_from_key(key, &session->key_codes);
+    if (command.kind == BOARD_COMMAND_EXIT)
+    {
+        return false;
+    }
+    session->undo_notice = false;
+    if (command.kind == BOARD_COMMAND_UNDO)
+    {
+        session->undo_notice = !game_port->undo_board_move_f(&session->board);
+    }
+    if (command.kind == BOARD_COMMAND_INPUT)
+    {
+        BoardEvent event =
+            game_port->apply_board_input_f(&session->board, command.input);
+        if (event == BOARD_EVENT_RESTART &&
+            restart_game(game_port, &session->board, &session->puzzle))
+        {
+            apply_palette_styles(&session->board.palette);
+            game_port->start_game_timer_f(&session->timer, now);
+        }
+    }
+    return true;
+}
+
+/* Advances the timer; a game completes once, and is recorded then. A failed
+ * save is ignored: the game goes on and the next completion tries again. */
+static void update_timer(const GamePort* game_port, GameSession* session,
+                         StatsStore* stats_store, time_t now)
+{
+    if (game_port->update_game_timer_f(&session->timer, session->board.result,
+                                       now))
+    {
+        record_stats_store_game(stats_store, game_port->difficulty,
+                                session->timer.elapsed_seconds);
+    }
 }
 
 /* The only feature-macro guards: PDCurses-only keypad codes. */
@@ -88,9 +150,10 @@ static BoardKeyCodes board_key_codes(void)
     return key_codes;
 }
 
-static void draw_board(const Board* board, bool undo_notice)
+static void draw_board(const GameSession* session)
 {
     erase();
-    print_layout(board, undo_notice);
+    print_layout(&session->board, session->undo_notice,
+                 session->timer.elapsed_seconds);
     refresh();
 }

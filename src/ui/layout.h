@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#include "../game/game_port.h"
 #include "../game/operand_group.h"
 
 /* Each matrix cell is a block: the matrix box on top and its three operand
@@ -37,6 +38,10 @@
 #define LAYOUT_UNDO_EMPTY_MESSAGE "Nothing to undo"
 #define LAYOUT_NOTICE_GAP_X                                                    \
     2 /* blank columns between the result and a notice */
+#define LAYOUT_TIMER_LABEL "Time: "
+#define LAYOUT_TIMER_GAP_X 4 /* blank columns before the timer */
+#define LAYOUT_TIMER_W                                                         \
+    ((int)(sizeof LAYOUT_TIMER_LABEL - 1) + TETONOR_ELAPSED_TEXT_SIZE - 1)
 #define LAYOUT_CONFIRM_LABEL "CONFIRM"
 #define LAYOUT_RESTART_LABEL "RESTART"
 #define LAYOUT_BUTTON_PADDING 1 /* blank columns each side of the label */
@@ -53,7 +58,8 @@
 #define LAYOUT_MENU_W 50
 #define LAYOUT_MENU_TITLE_ROW 1
 #define LAYOUT_MENU_START_ROW 3
-#define LAYOUT_MENU_EXIT_ROW 4
+#define LAYOUT_MENU_STATS_ROW 4
+#define LAYOUT_MENU_EXIT_ROW 5
 #define LAYOUT_MENU_TEXT_COL 2
 #define LAYOUT_DIFFICULTY_MENU_H 10
 #define LAYOUT_DIFFICULTY_MENU_W LAYOUT_MENU_W
@@ -61,6 +67,16 @@
 #define LAYOUT_DIFFICULTY_FIRST_OPTION_ROW 3
 #define LAYOUT_DIFFICULTY_CHOOSE_ROW 7
 #define LAYOUT_DIFFICULTY_BACK_ROW 8
+#define LAYOUT_STATS_MENU_H 10
+#define LAYOUT_STATS_MENU_W LAYOUT_MENU_W
+#define LAYOUT_STATS_TITLE_ROW 1
+#define LAYOUT_STATS_HEADER_ROW 3
+#define LAYOUT_STATS_FIRST_ROW 4
+#define LAYOUT_STATS_BACK_ROW 8
+#define LAYOUT_STATS_COUNT_COL 14
+#define LAYOUT_STATS_COUNT_W 10 /* INT32_MAX has ten digits */
+#define LAYOUT_STATS_BEST_COL 27
+#define LAYOUT_STATS_AVERAGE_COL 37
 
 typedef struct
 {
@@ -105,6 +121,12 @@ LayoutPoint layout_result_message_origin(void);
 /* Row/column of the nothing-to-undo notice: on the result row, right of the
  * longer result text. */
 LayoutPoint layout_undo_notice_origin(void);
+
+/* Top-left corner of the timer text, right of the first grid row. */
+LayoutPoint layout_timer_origin(void);
+
+/* Window row of a level's line on the statistics screen. */
+int layout_stats_row(int difficulty);
 
 /* True when a terminal of rows x cols holds the whole board. */
 bool layout_fits(int rows, int cols);

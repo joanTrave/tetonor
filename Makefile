@@ -23,15 +23,21 @@ COMPARE_BRANCH          ?= origin/main
 DIFF_COVERAGE_THRESHOLD ?= 90
 SANITIZE_FLAGS          ?= -g -fsanitize=address,undefined
 
-SRC     := $(wildcard src/*.c src/game/*.c src/ui/*.c)
+SRC     := $(wildcard src/*.c src/game/*.c src/ui/*.c src/storage/*.c \
+                      src/platform/*.c)
 OBJ     := $(SRC:%.c=build/obj/%.o)
 UI_OBJ  := $(filter build/obj/src/ui/%.o,$(OBJ))
 
-# Units linked into the tests: the portable core plus the pure UI modules.
-TESTABLE_OBJ := $(patsubst %.c,build/obj/%.o,$(wildcard src/game/*.c)) \
+# Units linked into the tests: the portable core, the storage and platform
+# adapters, and the pure UI modules.
+TESTABLE_OBJ := $(patsubst %.c,build/obj/%.o,$(wildcard src/game/*.c \
+                                                         src/storage/*.c \
+                                                         src/platform/*.c)) \
                 build/obj/src/ui/difficulty_menu.o \
                 build/obj/src/ui/keys.o build/obj/src/ui/layout.o \
-                build/obj/src/ui/palette_style.o
+                build/obj/src/ui/palette_style.o \
+                build/obj/src/ui/read_timeout.o \
+                build/obj/src/ui/stats_menu.o
 
 TEST_SRC := $(wildcard tests/*/test_*.c)
 TEST_BIN := $(TEST_SRC:tests/%.c=build/tests/%$(EXE))
@@ -57,6 +63,7 @@ build/tests/%$(EXE): tests/%.c $(TESTABLE_OBJ)
 	$(CC) $(CFLAGS) $(DEPFLAGS) -MF $@.d -o $@ $< $(TESTABLE_OBJ) $(LDFLAGS)
 
 test: $(TEST_BIN)
+	@rm -rf build/tests/tmp && mkdir -p build/tests/tmp
 	@failed=0; \
 	for test_bin in $(TEST_BIN); do \
 		echo "== $$test_bin"; \

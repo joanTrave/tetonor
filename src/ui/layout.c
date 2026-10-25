@@ -103,6 +103,20 @@ LayoutPoint layout_undo_notice_origin(void)
     return origin;
 }
 
+LayoutPoint layout_timer_origin(void)
+{
+    LayoutPoint last_cell = layout_sum_cell_origin(0, TETONOR_GRID_SIZE - 1);
+    LayoutPoint origin;
+    origin.y = LAYOUT_ORIGIN_Y + LAYOUT_CELL_VALUE_ROW;
+    origin.x = last_cell.x + LAYOUT_CELL_W + LAYOUT_TIMER_GAP_X;
+    return origin;
+}
+
+int layout_stats_row(int difficulty)
+{
+    return LAYOUT_STATS_FIRST_ROW + difficulty;
+}
+
 bool layout_fits(int rows, int cols)
 {
     return rows >= LAYOUT_MIN_ROWS && cols >= LAYOUT_MIN_COLS;

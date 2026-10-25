@@ -33,6 +33,9 @@ void init_difficulty_menu(DifficultyMenu* menu);
 void apply_difficulty_menu_command(DifficultyMenu* menu,
                                    DifficultyMenuCommand command);
 
+/* Clamps a value to the valid Difficulty range [EASY, HARD]. */
+int difficulty_menu_clamp(int difficulty);
+
 /* "Easy", "Medium" or "Hard". Values out of range are clamped. */
 const char* difficulty_menu_label(int difficulty);
 

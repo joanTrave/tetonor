@@ -13,6 +13,10 @@ MenuResult menu_result_from_key(int key, int enter_key)
     {
         return MENU_EXIT;
     }
+    if (key == TETONOR_KEY_STATISTICS || key == TETONOR_KEY_STATISTICS_UPPER)
+    {
+        return MENU_STATISTICS;
+    }
     return MENU_NONE;
 }
 
@@ -123,4 +127,10 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
         return make_board_command(BOARD_COMMAND_UNDO, 0, 0);
     }
     return make_board_command(BOARD_COMMAND_NONE, 0, 0);
+}
+
+StatsMenuCommand stats_menu_command_from_key(int key)
+{
+    return key == TETONOR_KEY_ESCAPE ? STATS_MENU_COMMAND_BACK
+                                     : STATS_MENU_COMMAND_NONE;
 }

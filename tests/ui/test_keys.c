@@ -373,6 +373,72 @@ static void test_menus_do_not_react_to_the_undo_key(void)
     }
 }
 
+static void test_menu_result_from_key_s_opens_statistics(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key('s', TEST_ENTER_KEY), MENU_STATISTICS);
+    ASSERT_EQ_INT(menu_result_from_key('S', TEST_ENTER_KEY), MENU_STATISTICS);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_STATISTICS, TEST_ENTER_KEY),
+                  MENU_STATISTICS);
+    ASSERT_EQ_INT(
+        menu_result_from_key(TETONOR_KEY_STATISTICS_UPPER, TEST_ENTER_KEY),
+        MENU_STATISTICS);
+}
+
+static void test_menu_result_from_key_existing_mappings_unchanged(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key(' ', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key('\n', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key(TEST_ENTER_KEY, TEST_ENTER_KEY),
+                  MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_ESCAPE, TEST_ENTER_KEY),
+                  MENU_EXIT);
+    ASSERT_EQ_INT(menu_result_from_key('a', TEST_ENTER_KEY), MENU_NONE);
+    ASSERT_EQ_INT(MENU_START, 0);
+    ASSERT_EQ_INT(MENU_EXIT, 1);
+    ASSERT_EQ_INT(MENU_NONE, 2);
+}
+
+static void test_menu_result_from_key_neighbours_of_s_are_ignored(void)
+{
+    const int keys[] = {'r', 'R', 't', 'T', 'z'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
+    }
+}
+
+static void test_board_command_from_key_s_is_ignored_in_game(void)
+{
+    const int keys[] = {'s', 'S'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        BoardCommand command = board_command_from_key(keys[i], &test_codes);
+        ASSERT_EQ_INT(command.kind, BOARD_COMMAND_NONE);
+    }
+}
+
+static void test_difficulty_menu_command_from_key_ignores_the_s_key(void)
+{
+    const MenuKeyCodes codes = {
+        .enter = TEST_ENTER_KEY, .up = TEST_UP_KEY, .down = TEST_DOWN_KEY};
+    ASSERT_EQ_INT(difficulty_menu_command_from_key('s', &codes),
+                  DIFFICULTY_COMMAND_NONE);
+    ASSERT_EQ_INT(difficulty_menu_command_from_key('S', &codes),
+                  DIFFICULTY_COMMAND_NONE);
+}
+
+static void test_stats_menu_command_from_key(void)
+{
+    ASSERT_EQ_INT(stats_menu_command_from_key(TETONOR_KEY_ESCAPE),
+                  STATS_MENU_COMMAND_BACK);
+    const int ignored[] = {'s', 'S', ' ', '\n', '\r', 'q', 'u', 0, -1};
+    for (size_t i = 0; i < sizeof ignored / sizeof ignored[0]; i++)
+    {
+        ASSERT_EQ_INT(stats_menu_command_from_key(ignored[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
 static const MenuKeyCodes menu_codes = {
     .enter = TEST_ENTER_KEY, .up = TEST_UP_KEY, .down = TEST_DOWN_KEY};
 
@@ -535,5 +601,11 @@ int main(void)
     RUN_TEST(test_board_command_from_key_undo_keeps_existing_mappings);
     RUN_TEST(test_menus_do_not_react_to_the_undo_key);
     RUN_TEST(test_difficulty_menu_command_from_key_ignores_the_undo_key);
+    RUN_TEST(test_menu_result_from_key_s_opens_statistics);
+    RUN_TEST(test_menu_result_from_key_existing_mappings_unchanged);
+    RUN_TEST(test_menu_result_from_key_neighbours_of_s_are_ignored);
+    RUN_TEST(test_board_command_from_key_s_is_ignored_in_game);
+    RUN_TEST(test_difficulty_menu_command_from_key_ignores_the_s_key);
+    RUN_TEST(test_stats_menu_command_from_key);
     return test_harness_result();
 }

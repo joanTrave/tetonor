@@ -4,7 +4,9 @@
 #include <stdbool.h>
 
 #include "board.h"
+#include "game_timer.h"
 #include "number_generation.h"
+#include "statistics.h"
 
 #define TETONOR_DEFAULT_DIFFICULTY DIFFICULTY_MEDIUM
 
@@ -20,6 +22,11 @@ typedef struct
     void (*init_board_f)(Board* board, const NumberGeneration* puzzle);
     BoardEvent (*apply_board_input_f)(Board* board, BoardInput input);
     bool (*undo_board_move_f)(Board* board);
+
+    /* Game timer related functions */
+    void (*start_game_timer_f)(GameTimer* timer, time_t now);
+    bool (*update_game_timer_f)(GameTimer* timer, BoardResult result,
+                                time_t now);
 } GamePort;
 
 /* Returns NULL on allocation failure. */

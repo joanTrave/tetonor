@@ -7,17 +7,25 @@
 #include "difficulty_menu.h"
 #include "keys.h"
 #include "layout.h"
+#include "stats_menu.h"
 #include "ui.h"
 #include "../game/game_port.h"
 
 static const char menu_title[]       = "Welcome to Tetonor";
 static const char menu_start_hint[]  = "Press SPACE or ENTER to start game";
+static const char menu_stats_hint[]  = "Press S to view statistics";
 static const char menu_exit_hint[]   = "Press ESC to exit";
 
 static const char difficulty_title[] = "Choose difficulty";
 static const char difficulty_choose_hint[] =
     "UP/DOWN to choose, SPACE or ENTER to start";
-static const char difficulty_back_hint[] = "Press ESC to go back";
+static const char back_hint[]            = "Press ESC to go back";
+
+static const char stats_title[]          = "Statistics";
+static const char stats_label_header[]   = "Difficulty";
+static const char stats_count_header[]   = "Completed";
+static const char stats_best_header[]    = "Best";
+static const char stats_average_header[] = "Average";
 
 static void clear_screen(void);
 static WINDOW* create_centered_window(int height, int width);
@@ -30,9 +38,14 @@ static void draw_difficulty_option(WINDOW* win, Difficulty level,
 static void draw_difficulty_menu(WINDOW* win, const DifficultyMenu* menu);
 static DifficultyMenuCommand read_difficulty_command(WINDOW* win);
 static bool run_difficulty_menu(DifficultyMenu* menu);
-static int run_game_session(Difficulty difficulty);
+static void draw_stats_row(WINDOW* win, const Statistics* statistics,
+                           int difficulty);
+static void draw_stats_menu(WINDOW* win, const Statistics* statistics);
+static StatsMenuCommand read_stats_command(WINDOW* win);
+static bool run_stats_menu(const Statistics* statistics);
+static int run_game_session(Difficulty difficulty, StatsStore* stats_store);
 
-int ui_show_start_menu(void)
+int ui_show_start_menu(StatsStore* stats_store)
 {
     for (;;)
     {
@@ -41,6 +54,15 @@ int ui_show_start_menu(void)
         if (!run_main_menu(&menu_result))
         {
             return EXIT_FAILURE;
+        }
+        if (menu_result == MENU_STATISTICS)
+        {
+            clear_screen();
+            if (!run_stats_menu(&stats_store->statistics))
+            {
+                return EXIT_FAILURE;
+            }
+            continue;
         }
         if (menu_result == MENU_EXIT)
         {
@@ -59,7 +81,7 @@ int ui_show_start_menu(void)
         }
 
         clear_screen();
-        int status = run_game_session(difficulty_menu.selected);
+        int status = run_game_session(difficulty_menu.selected, stats_store);
         if (status != EXIT_SUCCESS)
         {
             return status;
@@ -98,6 +120,8 @@ static void draw_main_menu(WINDOW* win)
     mvwprintw(win, LAYOUT_MENU_TITLE_ROW, title_col, "%s", menu_title);
     mvwprintw(win, LAYOUT_MENU_START_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_start_hint);
+    mvwprintw(win, LAYOUT_MENU_STATS_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              menu_stats_hint);
     mvwprintw(win, LAYOUT_MENU_EXIT_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_exit_hint);
 
@@ -177,7 +201,7 @@ static void draw_difficulty_menu(WINDOW* win, const DifficultyMenu* menu)
     mvwprintw(win, LAYOUT_DIFFICULTY_CHOOSE_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               difficulty_choose_hint);
     mvwprintw(win, LAYOUT_DIFFICULTY_BACK_ROW, LAYOUT_MENU_TEXT_COL, "%s",
-              difficulty_back_hint);
+              back_hint);
 
     wrefresh(win);
 }
@@ -212,7 +236,75 @@ static bool run_difficulty_menu(DifficultyMenu* menu)
     return true;
 }
 
-static int run_game_session(Difficulty difficulty)
+static void draw_stats_row(WINDOW* win, const Statistics* statistics,
+                           int difficulty)
+{
+    StatsMenuRow row;
+    build_stats_menu_row(statistics, difficulty, &row);
+    int y = layout_stats_row(difficulty);
+    mvwprintw(win, y, LAYOUT_MENU_TEXT_COL, "%s", row.label);
+    mvwprintw(win, y, LAYOUT_STATS_COUNT_COL, "%*d", LAYOUT_STATS_COUNT_W,
+              (int)row.completed_count);
+    mvwprintw(win, y, LAYOUT_STATS_BEST_COL, "%s", row.best);
+    mvwprintw(win, y, LAYOUT_STATS_AVERAGE_COL, "%s", row.average);
+}
+
+static void draw_stats_menu(WINDOW* win, const Statistics* statistics)
+{
+    werase(win);
+    box(win, 0, 0);
+
+    int title_col =
+        layout_centered_offset(LAYOUT_STATS_MENU_W, (int)strlen(stats_title));
+    mvwprintw(win, LAYOUT_STATS_TITLE_ROW, title_col, "%s", stats_title);
+    mvwprintw(win, LAYOUT_STATS_HEADER_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              stats_label_header);
+    mvwprintw(win, LAYOUT_STATS_HEADER_ROW, LAYOUT_STATS_COUNT_COL, "%*s",
+              LAYOUT_STATS_COUNT_W, stats_count_header);
+    mvwprintw(win, LAYOUT_STATS_HEADER_ROW, LAYOUT_STATS_BEST_COL, "%s",
+              stats_best_header);
+    mvwprintw(win, LAYOUT_STATS_HEADER_ROW, LAYOUT_STATS_AVERAGE_COL, "%s",
+              stats_average_header);
+    for (int level = 0; level < DIFFICULTY_COUNT; level++)
+    {
+        draw_stats_row(win, statistics, level);
+    }
+    mvwprintw(win, LAYOUT_STATS_BACK_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              back_hint);
+
+    wrefresh(win);
+}
+
+static StatsMenuCommand read_stats_command(WINDOW* win)
+{
+    int key = wgetch(win);
+    if (key == ERR)
+    {
+        return STATS_MENU_COMMAND_BACK; /* input closed: leave, do not spin */
+    }
+    return stats_menu_command_from_key(key);
+}
+
+/* Returns false when the window cannot be created. */
+static bool run_stats_menu(const Statistics* statistics)
+{
+    WINDOW* win =
+        create_centered_window(LAYOUT_STATS_MENU_H, LAYOUT_STATS_MENU_W);
+    if (win == NULL)
+    {
+        return false;
+    }
+    draw_stats_menu(win, statistics);
+    StatsMenuCommand command;
+    do
+    {
+        command = read_stats_command(win);
+    } while (command != STATS_MENU_COMMAND_BACK);
+    delwin(win);
+    return true;
+}
+
+static int run_game_session(Difficulty difficulty, StatsStore* stats_store)
 {
     GamePort* game_port = create_game_port();
     if (game_port == NULL)
@@ -220,7 +312,7 @@ static int run_game_session(Difficulty difficulty)
         return EXIT_FAILURE;
     }
     game_port->difficulty = difficulty;
-    int status            = ui_run(game_port);
+    int status            = ui_run(game_port, stats_store);
     destroy_game_port(game_port);
     return status;
 }
