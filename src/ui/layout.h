@@ -67,6 +67,26 @@
 #define LAYOUT_DIFFICULTY_FIRST_OPTION_ROW 3
 #define LAYOUT_DIFFICULTY_CHOOSE_ROW 7
 #define LAYOUT_DIFFICULTY_BACK_ROW 8
+#define LAYOUT_HELP_LINE_COUNT 3
+#define LAYOUT_PAUSE_MENU_H 9
+#define LAYOUT_PAUSE_MENU_W LAYOUT_MENU_W
+#define LAYOUT_PAUSE_TITLE_ROW 1
+#define LAYOUT_PAUSE_FIRST_OPTION_ROW 3
+#define LAYOUT_PAUSE_CHOOSE_ROW 6
+#define LAYOUT_PAUSE_BACK_ROW 7
+#define LAYOUT_PAUSE_TITLE "Paused"
+#define LAYOUT_PAUSE_CHOOSE_HINT "UP/DOWN to choose, SPACE or ENTER to select"
+#define LAYOUT_PAUSE_BACK_HINT "Press ESC or P to resume"
+#define LAYOUT_PROMPT_H 10
+#define LAYOUT_PROMPT_W LAYOUT_MENU_W
+#define LAYOUT_PROMPT_TITLE_ROW 1
+#define LAYOUT_PROMPT_WARNING_ROW 2
+#define LAYOUT_PROMPT_FIRST_OPTION_ROW 4
+#define LAYOUT_PROMPT_CHOOSE_ROW 7
+#define LAYOUT_PROMPT_BACK_ROW 8
+#define LAYOUT_PROMPT_WARNING "Progress in this game will be lost."
+#define LAYOUT_PROMPT_CHOOSE_HINT "Y or N, or UP/DOWN and SPACE or ENTER"
+#define LAYOUT_PROMPT_BACK_HINT "Press ESC to cancel"
 #define LAYOUT_STATS_MENU_H 10
 #define LAYOUT_STATS_MENU_W LAYOUT_MENU_W
 #define LAYOUT_STATS_TITLE_ROW 1
@@ -124,6 +144,21 @@ LayoutPoint layout_undo_notice_origin(void);
 
 /* Top-left corner of the timer text, right of the first grid row. */
 LayoutPoint layout_timer_origin(void);
+
+/* One line of the controls help (index 0..LAYOUT_HELP_LINE_COUNT-1); "" out of
+ * range. */
+const char* layout_help_line(int index);
+
+/* Row/column of help line index: left of RESTART, one line per row from its
+ * top. */
+LayoutPoint layout_help_line_origin(int index);
+
+/* Columns available to a help line: from LAYOUT_ORIGIN_X to the button gap. */
+int layout_help_width(void);
+
+/* Window row of a pause-menu option / a prompt option. */
+int layout_pause_option_row(int option);
+int layout_prompt_option_row(int option);
 
 /* Window row of a level's line on the statistics screen. */
 int layout_stats_row(int difficulty);

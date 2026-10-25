@@ -1006,6 +1006,113 @@ static void test_game_port_timer_through_port_completes_once(void)
     ASSERT_EQ_INT(timer.elapsed_seconds, 12);
 }
 
+static void test_create_game_port_wires_pause_and_resume(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool pause_wired  = game_port->pause_game_timer_f == pause_game_timer;
+    bool resume_wired = game_port->resume_game_timer_f == resume_game_timer;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(pause_wired);
+    ASSERT_TRUE(resume_wired);
+}
+
+static void test_create_game_port_wires_lock_and_progress(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool lock_wired     = game_port->is_board_locked_f == is_board_locked;
+    bool progress_wired = game_port->board_progress_would_be_lost_f ==
+                          board_progress_would_be_lost;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(lock_wired);
+    ASSERT_TRUE(progress_wired);
+}
+
+static void test_game_port_pause_through_port_freezes_time(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    GameTimer timer;
+    game_port->start_game_timer_f(&timer, 100);
+    game_port->pause_game_timer_f(&timer, 105);
+    bool paused_update =
+        game_port->update_game_timer_f(&timer, BOARD_RESULT_PENDING, 500);
+    int32_t frozen = timer.elapsed_seconds;
+    game_port->resume_game_timer_f(&timer, 600);
+    bool resumed_update =
+        game_port->update_game_timer_f(&timer, BOARD_RESULT_PENDING, 603);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(paused_update);
+    ASSERT_EQ_INT(frozen, 5);
+    ASSERT_FALSE(resumed_update);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 8);
+}
+
+static void test_game_port_correct_board_through_port_is_locked(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle = generate_through_port(game_port);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    bool locked_before = game_port->is_board_locked_f(&board);
+    play_session(game_port, &board, puzzle, 0);
+    bool correct = board.result == BOARD_RESULT_CORRECT;
+    bool locked  = game_port->is_board_locked_f(&board);
+    bool at_risk = game_port->board_progress_would_be_lost_f(&board);
+    Board before = board;
+    press_through_port(game_port, &board, BOARD_INPUT_MOVE_UP);
+    press_digit_through_port(game_port, &board, TEST_TYPED_VALUE);
+    press_through_port(game_port, &board, BOARD_INPUT_DELETE);
+    bool undone         = game_port->undo_board_move_f(&board);
+    before.focus        = board.focus;
+    before.cursor       = board.cursor;
+    before.group_cursor = board.group_cursor;
+    before.group_field  = board.group_field;
+    bool unchanged      = boards_match(&board, &before) &&
+                          board.history.count == before.history.count;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(locked_before);
+    ASSERT_TRUE(correct);
+    ASSERT_TRUE(locked);
+    ASSERT_FALSE(at_risk);
+    ASSERT_FALSE(undone);
+    ASSERT_TRUE(unchanged);
+}
+
+static void test_restart_game_unlocks_the_board(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    play_session(game_port, &board, puzzle, 0);
+    bool locked_before = game_port->is_board_locked_f(&board);
+    bool restarted     = restart_game(game_port, &board, &puzzle);
+    bool locked_after  = game_port->is_board_locked_f(&board);
+    bool at_risk       = game_port->board_progress_would_be_lost_f(&board);
+    bool fresh         = board_is_fresh(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(locked_before);
+    ASSERT_TRUE(restarted);
+    ASSERT_FALSE(locked_after);
+    ASSERT_FALSE(at_risk);
+    ASSERT_TRUE(fresh);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -1040,5 +1147,10 @@ int main(void)
     RUN_TEST(test_restart_game_with_real_port_empties_move_history);
     RUN_TEST(test_create_game_port_wires_timer_functions);
     RUN_TEST(test_game_port_timer_through_port_completes_once);
+    RUN_TEST(test_create_game_port_wires_pause_and_resume);
+    RUN_TEST(test_create_game_port_wires_lock_and_progress);
+    RUN_TEST(test_game_port_pause_through_port_freezes_time);
+    RUN_TEST(test_game_port_correct_board_through_port_is_locked);
+    RUN_TEST(test_restart_game_unlocks_the_board);
     return test_harness_result();
 }

@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "../test_harness.h"
@@ -244,7 +245,7 @@ static void test_board_command_from_key_operation_characters_ignore_codes(void)
 
 static void test_board_command_from_key_other_operators_are_ignored(void)
 {
-    const int keys[] = {'-', '/', '=', 'y', 'Y', 'p', '%', '^', 'v'};
+    const int keys[] = {'-', '/', '=', 'y', 'Y', '%', '^', 'v'};
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
     {
         ASSERT_NO_COMMAND(keys[i], test_codes);
@@ -557,6 +558,330 @@ static void test_difficulty_menu_command_from_key_ignores_the_undo_key(void)
                   DIFFICULTY_COMMAND_NONE);
 }
 
+#define TEST_SCAN_LAST_KEY 1023
+
+#define ASSERT_SIMPLE_COMMAND(key, codes, expected_kind)                       \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, (expected_kind));               \
+        ASSERT_EQ_INT(command_under_test.input.kind, 0);                       \
+        ASSERT_EQ_INT(command_under_test.input.digit, 0);                      \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
+    } while (0)
+
+static void test_board_command_from_key_p_pauses(void)
+{
+    ASSERT_SIMPLE_COMMAND('p', test_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('P', test_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('p', unavailable_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('P', unavailable_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('p', vertical_unavailable_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('P', vertical_unavailable_codes, BOARD_COMMAND_PAUSE);
+}
+
+static void test_board_command_from_key_n_starts_new_game(void)
+{
+    ASSERT_SIMPLE_COMMAND('n', test_codes, BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('N', test_codes, BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('n', unavailable_codes, BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('N', unavailable_codes, BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('n', vertical_unavailable_codes,
+                          BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('N', vertical_unavailable_codes,
+                          BOARD_COMMAND_NEW_GAME);
+}
+
+static void test_board_command_from_key_m_returns_to_main_menu(void)
+{
+    ASSERT_SIMPLE_COMMAND('m', test_codes, BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('M', test_codes, BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('m', unavailable_codes, BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('M', unavailable_codes, BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('m', vertical_unavailable_codes,
+                          BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('M', vertical_unavailable_codes,
+                          BOARD_COMMAND_MAIN_MENU);
+}
+
+static void test_board_command_from_key_shortcut_neighbours_are_ignored(void)
+{
+    const int keys[] = {'o', 'O', 'q', 'Q', 'l', 'L', 'y', 'Y'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_NO_COMMAND(keys[i], test_codes);
+        ASSERT_NO_COMMAND(keys[i], unavailable_codes);
+    }
+}
+
+static void assert_command_keys_are_exactly(BoardCommandKind kind,
+                                            const int* expected,
+                                            size_t expected_count,
+                                            const BoardKeyCodes* codes)
+{
+    for (int key = TETONOR_KEY_UNAVAILABLE; key <= TEST_SCAN_LAST_KEY; key++)
+    {
+        bool is_expected = false;
+        for (size_t i = 0; i < expected_count; i++)
+        {
+            is_expected = is_expected || key == expected[i];
+        }
+        bool maps = board_command_from_key(key, codes).kind == kind;
+        if (maps != is_expected)
+        {
+            TEST_HARNESS_FAIL("kind %d: key %d maps=%d expected=%d", (int)kind,
+                              key, (int)maps, (int)is_expected);
+        }
+    }
+}
+
+static void test_board_command_from_key_each_command_has_exactly_its_keys(void)
+{
+    const BoardKeyCodes* code_sets[] = {&test_codes, &unavailable_codes,
+                                        &vertical_unavailable_codes};
+    const int escape[]               = {TETONOR_KEY_ESCAPE};
+    const int pause[]                = {'p', 'P'};
+    const int new_game[]             = {'n', 'N'};
+    const int main_menu[]            = {'m', 'M'};
+    const int undo[]                 = {'u', 'U'};
+    for (size_t i = 0; i < sizeof code_sets / sizeof code_sets[0]; i++)
+    {
+        assert_command_keys_are_exactly(BOARD_COMMAND_EXIT, escape, 1,
+                                        code_sets[i]);
+        assert_command_keys_are_exactly(BOARD_COMMAND_PAUSE, pause, 2,
+                                        code_sets[i]);
+        assert_command_keys_are_exactly(BOARD_COMMAND_NEW_GAME, new_game, 2,
+                                        code_sets[i]);
+        assert_command_keys_are_exactly(BOARD_COMMAND_MAIN_MENU, main_menu, 2,
+                                        code_sets[i]);
+        assert_command_keys_are_exactly(BOARD_COMMAND_UNDO, undo, 2,
+                                        code_sets[i]);
+    }
+}
+
+static void
+test_board_command_from_key_protected_keys_never_become_shortcuts(void)
+{
+    const int protected_keys[] = {TEST_ENTER_KEY,
+                                  TEST_PAD_ENTER_KEY,
+                                  TEST_LEFT_KEY,
+                                  TEST_RIGHT_KEY,
+                                  TEST_UP_KEY,
+                                  TEST_DOWN_KEY,
+                                  TEST_BACKSPACE_KEY,
+                                  TEST_PAD_ZERO_KEY,
+                                  TEST_PAD_PLUS_KEY,
+                                  TEST_PAD_STAR_KEY,
+                                  '\n',
+                                  '\r',
+                                  ' ',
+                                  '\b',
+                                  TETONOR_KEY_DELETE,
+                                  '+',
+                                  'x',
+                                  'X',
+                                  '*',
+                                  '0',
+                                  '9'};
+    for (size_t i = 0; i < sizeof protected_keys / sizeof protected_keys[0];
+         i++)
+    {
+        BoardCommand command =
+            board_command_from_key(protected_keys[i], &test_codes);
+        ASSERT_EQ_INT(command.kind, BOARD_COMMAND_INPUT);
+    }
+}
+
+static void test_board_command_from_key_existing_mappings_unchanged(void)
+{
+    ASSERT_SIMPLE_COMMAND(TETONOR_KEY_ESCAPE, test_codes, BOARD_COMMAND_EXIT);
+    ASSERT_SIMPLE_COMMAND('u', test_codes, BOARD_COMMAND_UNDO);
+    ASSERT_SIMPLE_COMMAND('U', test_codes, BOARD_COMMAND_UNDO);
+    for (int digit = 0; digit < TETONOR_DIGIT_BASE; digit++)
+    {
+        ASSERT_DIGIT_COMMAND(TETONOR_KEY_DIGIT_FIRST + digit, test_codes,
+                             digit);
+    }
+    ASSERT_DIGIT_COMMAND(TEST_PAD_ZERO_KEY, test_codes, 0);
+    ASSERT_INPUT_COMMAND(TEST_LEFT_KEY, test_codes, BOARD_INPUT_MOVE_LEFT);
+    ASSERT_INPUT_COMMAND(TEST_RIGHT_KEY, test_codes, BOARD_INPUT_MOVE_RIGHT);
+    ASSERT_INPUT_COMMAND(TEST_UP_KEY, test_codes, BOARD_INPUT_MOVE_UP);
+    ASSERT_INPUT_COMMAND(TEST_DOWN_KEY, test_codes, BOARD_INPUT_MOVE_DOWN);
+    ASSERT_OPERATION_COMMAND('+', test_codes, GROUP_OPERATION_ADD);
+    ASSERT_OPERATION_COMMAND(TEST_PAD_PLUS_KEY, test_codes,
+                             GROUP_OPERATION_ADD);
+    ASSERT_OPERATION_COMMAND('x', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('X', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND('*', test_codes, GROUP_OPERATION_MULTIPLY);
+    ASSERT_OPERATION_COMMAND(TEST_PAD_STAR_KEY, test_codes,
+                             GROUP_OPERATION_MULTIPLY);
+    ASSERT_INPUT_COMMAND('\n', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND('\r', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(' ', test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND(TEST_PAD_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_INPUT_COMMAND('\b', test_codes, BOARD_INPUT_DELETE);
+    ASSERT_INPUT_COMMAND(TETONOR_KEY_DELETE, test_codes, BOARD_INPUT_DELETE);
+    ASSERT_INPUT_COMMAND(TEST_BACKSPACE_KEY, test_codes, BOARD_INPUT_DELETE);
+}
+
+static void test_pause_menu_command_from_key_maps_navigation(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key(TEST_UP_KEY, &menu_codes),
+                  PAUSE_MENU_COMMAND_UP);
+    ASSERT_EQ_INT(pause_menu_command_from_key(TEST_DOWN_KEY, &menu_codes),
+                  PAUSE_MENU_COMMAND_DOWN);
+    const int select_keys[] = {' ', '\n', '\r', TEST_ENTER_KEY};
+    for (size_t i = 0; i < sizeof select_keys / sizeof select_keys[0]; i++)
+    {
+        ASSERT_EQ_INT(pause_menu_command_from_key(select_keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_SELECT);
+    }
+    const int resume_keys[] = {TETONOR_KEY_ESCAPE, TEST_ESCAPE_LITERAL, 'p',
+                               'P'};
+    for (size_t i = 0; i < sizeof resume_keys / sizeof resume_keys[0]; i++)
+    {
+        ASSERT_EQ_INT(pause_menu_command_from_key(resume_keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_RESUME);
+    }
+}
+
+static void test_pause_menu_command_from_key_ignores_other_keys(void)
+{
+    const int keys[] = {'0',
+                        '5',
+                        '9',
+                        'n',
+                        'N',
+                        'm',
+                        'M',
+                        'u',
+                        'U',
+                        'y',
+                        'Y',
+                        '+',
+                        'x',
+                        '*',
+                        'a',
+                        '\b',
+                        TETONOR_KEY_DELETE,
+                        TEST_BACKSPACE_KEY,
+                        TEST_LEFT_KEY,
+                        TEST_RIGHT_KEY,
+                        TEST_HOME_KEY,
+                        TEST_RESIZE_KEY,
+                        0,
+                        TEST_ERR_KEY,
+                        TETONOR_KEY_UNAVAILABLE};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(pause_menu_command_from_key(keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_NONE);
+    }
+}
+
+static void test_pause_menu_command_from_key_unavailable_codes_never_match(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key(TETONOR_KEY_UNAVAILABLE,
+                                              &unavailable_menu_codes),
+                  PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        pause_menu_command_from_key(TEST_UP_KEY, &unavailable_menu_codes),
+        PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        pause_menu_command_from_key(TEST_DOWN_KEY, &unavailable_menu_codes),
+        PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        pause_menu_command_from_key(TEST_ENTER_KEY, &unavailable_menu_codes),
+        PAUSE_MENU_COMMAND_NONE);
+    ASSERT_EQ_INT(pause_menu_command_from_key(' ', &unavailable_menu_codes),
+                  PAUSE_MENU_COMMAND_SELECT);
+    ASSERT_EQ_INT(pause_menu_command_from_key('P', &unavailable_menu_codes),
+                  PAUSE_MENU_COMMAND_RESUME);
+}
+
+static void test_prompt_command_from_key_maps_answers(void)
+{
+    ASSERT_EQ_INT(prompt_command_from_key('y', &menu_codes),
+                  PROMPT_COMMAND_YES);
+    ASSERT_EQ_INT(prompt_command_from_key('Y', &menu_codes),
+                  PROMPT_COMMAND_YES);
+    ASSERT_EQ_INT(prompt_command_from_key('n', &menu_codes), PROMPT_COMMAND_NO);
+    ASSERT_EQ_INT(prompt_command_from_key('N', &menu_codes), PROMPT_COMMAND_NO);
+    ASSERT_EQ_INT(prompt_command_from_key(TETONOR_KEY_ESCAPE, &menu_codes),
+                  PROMPT_COMMAND_NO);
+    ASSERT_EQ_INT(prompt_command_from_key(TEST_UP_KEY, &menu_codes),
+                  PROMPT_COMMAND_UP);
+    ASSERT_EQ_INT(prompt_command_from_key(TEST_DOWN_KEY, &menu_codes),
+                  PROMPT_COMMAND_DOWN);
+    const int select_keys[] = {' ', '\n', '\r', TEST_ENTER_KEY};
+    for (size_t i = 0; i < sizeof select_keys / sizeof select_keys[0]; i++)
+    {
+        ASSERT_EQ_INT(prompt_command_from_key(select_keys[i], &menu_codes),
+                      PROMPT_COMMAND_SELECT);
+    }
+}
+
+static void test_prompt_command_from_key_ignores_other_keys(void)
+{
+    const int keys[] = {'p',
+                        'P',
+                        'm',
+                        'M',
+                        'u',
+                        'U',
+                        '0',
+                        '7',
+                        'x',
+                        '+',
+                        'a',
+                        TEST_BACKSPACE_KEY,
+                        TEST_LEFT_KEY,
+                        TEST_RESIZE_KEY,
+                        0,
+                        TEST_ERR_KEY,
+                        TETONOR_KEY_UNAVAILABLE};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
+                      PROMPT_COMMAND_NONE);
+    }
+}
+
+static void test_prompt_command_from_key_unavailable_codes_never_match(void)
+{
+    ASSERT_EQ_INT(prompt_command_from_key(TETONOR_KEY_UNAVAILABLE,
+                                          &unavailable_menu_codes),
+                  PROMPT_COMMAND_NONE);
+    ASSERT_EQ_INT(prompt_command_from_key(TEST_UP_KEY, &unavailable_menu_codes),
+                  PROMPT_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        prompt_command_from_key(TEST_DOWN_KEY, &unavailable_menu_codes),
+        PROMPT_COMMAND_NONE);
+    ASSERT_EQ_INT(
+        prompt_command_from_key(TEST_ENTER_KEY, &unavailable_menu_codes),
+        PROMPT_COMMAND_NONE);
+    ASSERT_EQ_INT(prompt_command_from_key('\n', &unavailable_menu_codes),
+                  PROMPT_COMMAND_SELECT);
+    ASSERT_EQ_INT(prompt_command_from_key('y', &unavailable_menu_codes),
+                  PROMPT_COMMAND_YES);
+}
+
+static void test_menus_ignore_game_shortcuts(void)
+{
+    const int keys[] = {'p', 'P', 'n', 'N', 'm', 'M'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+        ASSERT_EQ_INT(stats_menu_command_from_key(keys[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -607,5 +932,19 @@ int main(void)
     RUN_TEST(test_board_command_from_key_s_is_ignored_in_game);
     RUN_TEST(test_difficulty_menu_command_from_key_ignores_the_s_key);
     RUN_TEST(test_stats_menu_command_from_key);
+    RUN_TEST(test_board_command_from_key_p_pauses);
+    RUN_TEST(test_board_command_from_key_n_starts_new_game);
+    RUN_TEST(test_board_command_from_key_m_returns_to_main_menu);
+    RUN_TEST(test_board_command_from_key_shortcut_neighbours_are_ignored);
+    RUN_TEST(test_board_command_from_key_each_command_has_exactly_its_keys);
+    RUN_TEST(test_board_command_from_key_protected_keys_never_become_shortcuts);
+    RUN_TEST(test_board_command_from_key_existing_mappings_unchanged);
+    RUN_TEST(test_pause_menu_command_from_key_maps_navigation);
+    RUN_TEST(test_pause_menu_command_from_key_ignores_other_keys);
+    RUN_TEST(test_pause_menu_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(test_prompt_command_from_key_maps_answers);
+    RUN_TEST(test_prompt_command_from_key_ignores_other_keys);
+    RUN_TEST(test_prompt_command_from_key_unavailable_codes_never_match);
+    RUN_TEST(test_menus_ignore_game_shortcuts);
     return test_harness_result();
 }

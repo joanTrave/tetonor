@@ -210,6 +210,169 @@ static void test_start_game_timer_mid_game_resets_elapsed(void)
     ASSERT_EQ_INT(timer.elapsed_seconds, 1);
 }
 
+static void test_start_game_timer_starts_unpaused(void)
+{
+    GameTimer timer;
+    memset(&timer, 0x5a, sizeof timer);
+    start_game_timer(&timer, TEST_START_TIME);
+    ASSERT_FALSE(timer.paused);
+}
+
+static void test_pause_game_timer_counts_time_up_to_the_pause(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 103);
+    pause_game_timer(&timer, 105);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+    ASSERT_TRUE(timer.paused);
+    ASSERT_TRUE(timer.running);
+    ASSERT_TRUE(timer.last_tick == 105);
+}
+
+static void test_update_game_timer_while_paused_adds_nothing(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    pause_game_timer(&timer, 105);
+    const time_t later[] = {106, 400, 100000};
+    for (size_t i = 0; i < sizeof later / sizeof later[0]; i++)
+    {
+        ASSERT_FALSE(update_game_timer(&timer, BOARD_RESULT_PENDING, later[i]));
+        ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+        ASSERT_TRUE(timer.paused);
+        ASSERT_TRUE(timer.last_tick == 105);
+    }
+}
+
+static void test_resume_game_timer_continues_from_the_pause(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    pause_game_timer(&timer, 105);
+    resume_game_timer(&timer, 5000);
+    ASSERT_FALSE(timer.paused);
+    ASSERT_TRUE(timer.running);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+    ASSERT_FALSE(update_game_timer(&timer, BOARD_RESULT_PENDING, 5003));
+    ASSERT_EQ_INT(timer.elapsed_seconds, 8);
+}
+
+static void test_resume_game_timer_after_a_pause_longer_than_the_cap(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 0);
+    pause_game_timer(&timer, 7);
+    resume_game_timer(&timer, TEST_HUGE_JUMP);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, TEST_HUGE_JUMP + 3);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 10);
+}
+
+static void test_pause_resume_cycles_count_only_played_time(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 0);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 10);
+    pause_game_timer(&timer, 10);
+    resume_game_timer(&timer, 1000);
+    pause_game_timer(&timer, 1010);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 20);
+    resume_game_timer(&timer, 5000);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 5030);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 50);
+    pause_game_timer(&timer, 5030);
+    resume_game_timer(&timer, 9000);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 9001);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 51);
+}
+
+static void test_pause_game_timer_twice_keeps_the_first_pause(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    pause_game_timer(&timer, 105);
+    pause_game_timer(&timer, 200);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+    ASSERT_TRUE(timer.paused);
+    ASSERT_TRUE(timer.last_tick == 105);
+    resume_game_timer(&timer, 300);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 301);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 6);
+}
+
+static void test_resume_game_timer_when_not_paused_keeps_time(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    resume_game_timer(&timer, 105);
+    ASSERT_FALSE(timer.paused);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 106);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 6);
+}
+
+static void test_pause_game_timer_clock_backwards_never_decreases(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 105);
+    pause_game_timer(&timer, 90);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+    ASSERT_TRUE(timer.paused);
+    resume_game_timer(&timer, 200);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 202);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 7);
+}
+
+static void test_pause_game_timer_huge_gap_is_capped(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 0);
+    pause_game_timer(&timer, TEST_HUGE_JUMP);
+    ASSERT_EQ_INT(timer.elapsed_seconds, TETONOR_TIMER_MAX_SECONDS);
+}
+
+static void test_update_game_timer_correct_while_paused_does_not_complete(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    pause_game_timer(&timer, 105);
+    ASSERT_FALSE(update_game_timer(&timer, BOARD_RESULT_CORRECT, 200));
+    ASSERT_TRUE(timer.running);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 5);
+    resume_game_timer(&timer, 300);
+    ASSERT_TRUE(update_game_timer(&timer, BOARD_RESULT_CORRECT, 302));
+    ASSERT_FALSE(timer.running);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 7);
+    ASSERT_FALSE(update_game_timer(&timer, BOARD_RESULT_CORRECT, 400));
+}
+
+static void test_pause_completed_timer_stays_stopped(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    ASSERT_TRUE(update_game_timer(&timer, BOARD_RESULT_CORRECT, 110));
+    ASSERT_EQ_INT(timer.elapsed_seconds, 10);
+    pause_game_timer(&timer, 120);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 10);
+    ASSERT_FALSE(timer.running);
+    resume_game_timer(&timer, 200);
+    ASSERT_FALSE(update_game_timer(&timer, BOARD_RESULT_CORRECT, 300));
+    ASSERT_EQ_INT(timer.elapsed_seconds, 10);
+    ASSERT_FALSE(timer.running);
+}
+
+static void test_start_game_timer_clears_pause(void)
+{
+    GameTimer timer;
+    start_game_timer(&timer, 100);
+    pause_game_timer(&timer, 105);
+    start_game_timer(&timer, 500);
+    ASSERT_FALSE(timer.paused);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 0);
+    update_game_timer(&timer, BOARD_RESULT_PENDING, 502);
+    ASSERT_EQ_INT(timer.elapsed_seconds, 2);
+}
+
 static void test_format_elapsed_time_boundaries(void)
 {
     ASSERT_FORMAT(0, "00:00");
@@ -285,6 +448,19 @@ int main(void)
     RUN_TEST(test_update_game_timer_stopped_ignores_time_and_result);
     RUN_TEST(test_start_game_timer_after_completion_restarts);
     RUN_TEST(test_start_game_timer_mid_game_resets_elapsed);
+    RUN_TEST(test_start_game_timer_starts_unpaused);
+    RUN_TEST(test_pause_game_timer_counts_time_up_to_the_pause);
+    RUN_TEST(test_update_game_timer_while_paused_adds_nothing);
+    RUN_TEST(test_resume_game_timer_continues_from_the_pause);
+    RUN_TEST(test_resume_game_timer_after_a_pause_longer_than_the_cap);
+    RUN_TEST(test_pause_resume_cycles_count_only_played_time);
+    RUN_TEST(test_pause_game_timer_twice_keeps_the_first_pause);
+    RUN_TEST(test_resume_game_timer_when_not_paused_keeps_time);
+    RUN_TEST(test_pause_game_timer_clock_backwards_never_decreases);
+    RUN_TEST(test_pause_game_timer_huge_gap_is_capped);
+    RUN_TEST(test_update_game_timer_correct_while_paused_does_not_complete);
+    RUN_TEST(test_pause_completed_timer_stays_stopped);
+    RUN_TEST(test_start_game_timer_clears_pause);
     RUN_TEST(test_format_elapsed_time_boundaries);
     RUN_TEST(test_format_elapsed_time_clamps_out_of_range);
     RUN_TEST(test_format_elapsed_time_fits_the_declared_buffer_size);

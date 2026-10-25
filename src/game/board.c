@@ -57,8 +57,33 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     refresh_slot_usages(board);
 }
 
+/* The inputs a locked board still takes: movement, and ACTIVATE anywhere but
+ * on the submit control. */
+static bool allowed_while_locked(const Board* board, BoardInput input)
+{
+    switch (input.kind)
+    {
+        case BOARD_INPUT_MOVE_LEFT:
+        case BOARD_INPUT_MOVE_RIGHT:
+        case BOARD_INPUT_MOVE_UP:
+        case BOARD_INPUT_MOVE_DOWN:
+            return true;
+        case BOARD_INPUT_ACTIVATE:
+            return board->focus != BOARD_FOCUS_SUBMIT;
+        case BOARD_INPUT_DIGIT:
+        case BOARD_INPUT_DELETE:
+        case BOARD_INPUT_OPERATION:
+            return false;
+    }
+    return false;
+}
+
 BoardEvent apply_board_input(Board* board, BoardInput input)
 {
+    if (is_board_locked(board) && !allowed_while_locked(board, input))
+    {
+        return BOARD_EVENT_NONE;
+    }
     BoardEvent event = BOARD_EVENT_NONE;
     BoardSnapshot before;
     take_snapshot(board, &before);
@@ -87,7 +112,7 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
 
 bool undo_board_move(Board* board)
 {
-    if (board->history.count == 0)
+    if (is_board_locked(board) || board->history.count == 0)
     {
         return false;
     }
@@ -96,6 +121,16 @@ bool undo_board_move(Board* board)
     restore_snapshot(board, &snapshot);
     refresh_slot_usages(board);
     return true;
+}
+
+bool is_board_locked(const Board* board)
+{
+    return board->result == BOARD_RESULT_CORRECT;
+}
+
+bool board_progress_would_be_lost(const Board* board)
+{
+    return !is_board_locked(board) && board->history.count > 0;
 }
 
 static void apply_slot_input(Board* board, BoardInput input)
