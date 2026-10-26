@@ -22,6 +22,8 @@ GamePort* create_game_port(void)
     game_port->update_game_timer_f            = &update_game_timer;
     game_port->pause_game_timer_f             = &pause_game_timer;
     game_port->resume_game_timer_f            = &resume_game_timer;
+    game_port->capture_saved_game_f           = &capture_saved_game;
+    game_port->restore_saved_game_f           = &restore_saved_game;
     return game_port;
 }
 

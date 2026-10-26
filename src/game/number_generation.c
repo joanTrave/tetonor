@@ -56,6 +56,21 @@ void free_number_generation(NumberGeneration* number_generation)
     free(number_generation);
 }
 
+NumberGeneration* alloc_number_generation_copy(const NumberGeneration* source)
+{
+    if (source == NULL)
+    {
+        return NULL;
+    }
+    NumberGeneration* copy = malloc(sizeof *copy);
+    if (copy == NULL)
+    {
+        return NULL;
+    }
+    *copy = *source;
+    return copy;
+}
+
 static int clamp_difficulty(int difficulty)
 {
     if (difficulty < DIFFICULTY_EASY)

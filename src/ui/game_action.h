@@ -6,7 +6,8 @@ typedef enum
 {
     GAME_ACTION_NONE,
     GAME_ACTION_NEW_GAME,
-    GAME_ACTION_MAIN_MENU /* abandon the game */
+    GAME_ACTION_MAIN_MENU, /* abandon the game */
+    GAME_ACTION_SAVE       /* save the game; the pause menu stays open */
 } GameAction;
 
 #endif

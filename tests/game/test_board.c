@@ -4266,6 +4266,215 @@ static void test_board_move_count_follows_a_solved_game(void)
     ASSERT_EQ_INT(board_move_count(&board), board.history.count);
 }
 
+#define TEST_RESTORED_MOVES 9
+#define TEST_RESTORED_SLOT_VALUE 6
+#define TEST_RESTORED_OTHER_SLOT_VALUE 12
+#define TEST_RESTORED_GROUP_CELL 4
+#define TEST_RESTORED_FIRST_VALUE 2
+
+static void make_restore_entries(BoardSnapshot* entries)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        entries->slot_values[i] = TETONOR_EMPTY_ENTRY;
+        clear_operand_group(&entries->groups[i]);
+    }
+    entries->slot_values[TEST_FIRST_SLOT] = TEST_RESTORED_FIRST_VALUE;
+    entries->slot_values[TEST_THIRD_SLOT] = TEST_RESTORED_SLOT_VALUE;
+    entries->slot_values[TEST_LAST_SLOT]  = TEST_RESTORED_OTHER_SLOT_VALUE;
+    entries->groups[0]                    = fixture_groups[0];
+    entries->groups[TEST_RESTORED_GROUP_CELL] =
+        (OperandGroup){9, GROUP_OPERATION_NONE, TETONOR_EMPTY_ENTRY};
+    entries->result = BOARD_RESULT_PENDING;
+}
+
+static void test_restore_board_sets_the_entries_and_the_move_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    ASSERT_TRUE(board.puzzle == &puzzle);
+    ASSERT_EQ_INT(board.move_count, TEST_RESTORED_MOVES);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        bool editable = puzzle.available_array[i] == TETONOR_HIDDEN_NUMBER;
+        ASSERT_EQ_INT(board.slots[i].editable, editable);
+        if (editable)
+        {
+            ASSERT_EQ_INT(board.slots[i].value, entries.slot_values[i]);
+        }
+        ASSERT_EQ_INT(board.groups[i].smaller, entries.groups[i].smaller);
+        ASSERT_EQ_INT(board.groups[i].operation, entries.groups[i].operation);
+        ASSERT_EQ_INT(board.groups[i].greater, entries.groups[i].greater);
+    }
+}
+
+static void test_restore_board_copies_a_wrong_result(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    entries.result = BOARD_RESULT_WRONG;
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_FALSE(is_board_locked(&board));
+}
+
+static void test_restore_board_starts_where_init_board_starts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    place_group_focus(&board, 9, GROUP_FIELD_GREATER);
+    board.focus                    = BOARD_FOCUS_RESTART;
+    board.palette.background.color = PALETTE_COLOR_RED;
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    Board fresh;
+    init_board(&fresh, &puzzle);
+    ASSERT_EQ_INT(board.cursor, TEST_FIRST_SLOT);
+    ASSERT_EQ_INT(board.cursor, fresh.cursor);
+    ASSERT_EQ_INT(board.focus, fresh.focus);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    ASSERT_EQ_INT(board.group_cursor, fresh.group_cursor);
+    ASSERT_EQ_INT(board.group_field, fresh.group_field);
+    ASSERT_EQ_INT(memcmp(&board.palette, &fresh.palette, sizeof board.palette),
+                  0);
+}
+
+static void test_restore_board_without_editable_slots_focuses_the_groups(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    entries.slot_values[TEST_FIRST_SLOT] = TETONOR_EMPTY_ENTRY;
+    entries.slot_values[TEST_THIRD_SLOT] = TETONOR_EMPTY_ENTRY;
+    entries.slot_values[TEST_LAST_SLOT]  = TETONOR_EMPTY_ENTRY;
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    ASSERT_EQ_INT(board.cursor, TETONOR_NO_CURSOR);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_GROUP);
+}
+
+static void test_restore_board_recomputes_the_slot_usages(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    entries.slot_values[TEST_FIRST_SLOT]  = 2;
+    entries.slot_values[TEST_SECOND_SLOT] = 5;
+    entries.slot_values[TEST_THIRD_SLOT]  = 6;
+    entries.slot_values[TEST_LAST_SLOT]   = 29;
+    memcpy(entries.groups, fixture_groups, sizeof entries.groups);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    int strip[TETONOR_CELL_COUNT];
+    SlotUsage expected[TETONOR_CELL_COUNT];
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        strip[i] = board.slots[i].editable ? entries.slot_values[i]
+                                           : puzzle.available_array[i];
+    }
+    compute_slot_usages(strip, entries.groups, expected);
+    bool any_twice = false;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        ASSERT_EQ_INT(board.slot_usages[i], expected[i]);
+        any_twice = any_twice || expected[i] == SLOT_USAGE_TWICE;
+    }
+    ASSERT_TRUE(any_twice);
+}
+
+static void test_restore_board_leaves_the_history_empty(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.history.count, 1);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    ASSERT_EQ_INT(board.history.count, 0);
+    ASSERT_FALSE(board_progress_would_be_lost(&board));
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value,
+                  TEST_RESTORED_FIRST_VALUE);
+    ASSERT_EQ_INT(board.move_count, TEST_RESTORED_MOVES);
+}
+
+static void test_restore_board_next_move_counts_from_the_restored_count(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value,
+                  TEST_RESTORED_FIRST_VALUE * TETONOR_DIGIT_BASE +
+                      TEST_OTHER_DIGIT);
+    ASSERT_EQ_INT(board_move_count(&board), TEST_RESTORED_MOVES + 1);
+    ASSERT_EQ_INT(board.history.count, 1);
+    ASSERT_TRUE(board_progress_would_be_lost(&board));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value,
+                  TEST_RESTORED_FIRST_VALUE);
+    ASSERT_EQ_INT(board_move_count(&board), TEST_RESTORED_MOVES + 1);
+}
+
+static void test_restore_board_keeps_editing_working(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    ASSERT_EQ_INT(board.cursor, TEST_SECOND_SLOT);
+    type_value(&board, 5);
+    ASSERT_EQ_INT(board.slots[TEST_SECOND_SLOT].value, 5);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.slots[TEST_SECOND_SLOT].value, TETONOR_EMPTY_ENTRY);
+}
+
+static void test_restore_board_with_empty_entries_and_no_moves(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, TEST_OTHER_DIGIT);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        entries.slot_values[i] = TETONOR_EMPTY_ENTRY;
+        clear_operand_group(&entries.groups[i]);
+    }
+    restore_board(&board, &puzzle, &entries, 0);
+    ASSERT_EQ_INT(board.move_count, 0);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board.slots[i].editable)
+        {
+            ASSERT_EQ_INT(board.slots[i].value, TETONOR_EMPTY_ENTRY);
+        }
+        ASSERT_FALSE(is_operand_group_filled(&board.groups[i]));
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -4518,5 +4727,14 @@ int main(void)
     RUN_TEST(test_apply_board_input_move_count_saturates);
     RUN_TEST(test_board_move_count_returns_the_count);
     RUN_TEST(test_board_move_count_follows_a_solved_game);
+    RUN_TEST(test_restore_board_sets_the_entries_and_the_move_count);
+    RUN_TEST(test_restore_board_copies_a_wrong_result);
+    RUN_TEST(test_restore_board_starts_where_init_board_starts);
+    RUN_TEST(test_restore_board_without_editable_slots_focuses_the_groups);
+    RUN_TEST(test_restore_board_recomputes_the_slot_usages);
+    RUN_TEST(test_restore_board_leaves_the_history_empty);
+    RUN_TEST(test_restore_board_next_move_counts_from_the_restored_count);
+    RUN_TEST(test_restore_board_keeps_editing_working);
+    RUN_TEST(test_restore_board_with_empty_entries_and_no_moves);
     return test_harness_result();
 }

@@ -2,6 +2,20 @@
 
 #include "game_session.h"
 
+/* The state every session starts with, however its game began. */
+static void init_session_state(GameSession* session,
+                               const BoardKeyCodes* board_key_codes,
+                               const MenuKeyCodes* menu_key_codes,
+                               bool linked_to_save)
+{
+    init_pause_state(&session->pause);
+    init_victory_state(&session->victory);
+    session->undo_notice     = false;
+    session->linked_to_save  = linked_to_save;
+    session->board_key_codes = *board_key_codes;
+    session->menu_key_codes  = *menu_key_codes;
+}
+
 bool init_game_session(const GamePort* game_port, GameSession* session,
                        const BoardKeyCodes* board_key_codes,
                        const MenuKeyCodes* menu_key_codes, time_t now)
@@ -14,12 +28,40 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
     }
     game_port->init_board_f(&session->board, session->puzzle);
     game_port->start_game_timer_f(&session->timer, now);
-    init_pause_state(&session->pause);
-    init_victory_state(&session->victory);
-    session->undo_notice     = false;
-    session->board_key_codes = *board_key_codes;
-    session->menu_key_codes  = *menu_key_codes;
+    init_session_state(session, board_key_codes, menu_key_codes, false);
     return true;
+}
+
+bool init_game_session_from_save(const GamePort* game_port,
+                                 GameSession* session, const SavedGame* saved,
+                                 const BoardKeyCodes* board_key_codes,
+                                 const MenuKeyCodes* menu_key_codes, time_t now)
+{
+    session->puzzle = game_port->restore_saved_game_f(saved, &session->board,
+                                                      &session->timer, now);
+    if (session->puzzle == NULL)
+    {
+        return false;
+    }
+    init_session_state(session, board_key_codes, menu_key_codes, true);
+    return true;
+}
+
+bool capture_game_session(const GamePort* game_port, const GameSession* session,
+                          SavedGame* out)
+{
+    return game_port->capture_saved_game_f(&session->board,
+                                           session->timer.elapsed_seconds,
+                                           game_port->difficulty, out);
+}
+
+void note_game_session_saved(GameSession* session, PauseSaveNotice notice)
+{
+    set_pause_save_notice(&session->pause, notice);
+    if (notice != PAUSE_SAVE_NOTICE_FAILED)
+    {
+        session->linked_to_save = true;
+    }
 }
 
 void end_game_session(const GamePort* game_port, GameSession* session)
@@ -43,6 +85,7 @@ static bool restart_new_game(const GamePort* game_port, GameSession* session,
     }
     game_port->start_game_timer_f(&session->timer, now);
     init_victory_state(&session->victory);
+    session->linked_to_save = false;
     return true;
 }
 
@@ -149,6 +192,8 @@ perform_game_action(const GamePort* game_port, GameSession* session,
                        : GAME_SESSION_CONTINUE;
         case GAME_ACTION_MAIN_MENU:
             return GAME_SESSION_LEAVE;
+        case GAME_ACTION_SAVE:
+            return GAME_SESSION_SAVE;
         case GAME_ACTION_NONE:
             break;
     }

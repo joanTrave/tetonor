@@ -7,6 +7,7 @@
 
 #include "../test_harness.h"
 #include "../game/fixture_puzzle.h"
+#include "../game/fixture_saved_game.h"
 #include "../../src/ui/game_session.h"
 
 #define TEST_ENTER_KEY 0x157
@@ -1802,6 +1803,610 @@ static void test_restart_button_and_n_reset_moves_and_victory(void)
     run_session_test(check_failed_new_game_keeps_moves);
 }
 
+#define TEST_PAUSED_AT (TEST_START_TIME + 30)
+#define TEST_SAVE_KEY 's'
+#define TEST_SAVE_KEY_UPPER 'S'
+#define TEST_RESTORED_CURSOR 1
+#define TEST_CONTINUED_AT ((time_t)110)
+#define TEST_CONTINUED_COMPLETED_AT ((time_t)120)
+#define TEST_CONTINUED_EXTRA_SECONDS 20
+#define TEST_CONTINUED_EXTRA_MOVES 2
+#define TEST_SECOND_HIDDEN_SLOT_VALUE '3'
+#define TEST_LAST_HIDDEN_SLOT_VALUE '9'
+#define TEST_GARBAGE_BYTE 0x5a
+
+static NumberGeneration* fake_generate_save_puzzle(int difficulty)
+{
+    fake_generate_calls++;
+    fake_generate_difficulty = difficulty;
+    if (fake_generate_fails)
+    {
+        return NULL;
+    }
+    NumberGeneration* puzzle = malloc(sizeof *puzzle);
+    if (puzzle != NULL)
+    {
+        fake_alloc_count++;
+        build_save_fixture_puzzle(puzzle, difficulty);
+    }
+    return puzzle;
+}
+
+/* A port whose puzzles are valid for saving at the given difficulty. */
+static GamePort* create_save_port(int difficulty)
+{
+    GamePort* game_port = create_fake_port();
+    if (game_port != NULL)
+    {
+        game_port->generate_random_numbers_f = &fake_generate_save_puzzle;
+        game_port->difficulty                = difficulty;
+    }
+    return game_port;
+}
+
+static void run_save_session_test(int difficulty,
+                                  void (*body)(const GamePort*, GameSession*))
+{
+    GamePort* game_port = create_save_port(difficulty);
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    if (!start_session(game_port, &session, TEST_START_TIME))
+    {
+        destroy_game_port(game_port);
+        ASSERT_TRUE(false);
+    }
+    body(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(fake_free_calls, fake_alloc_count);
+}
+
+/* A session continued from the golden save. The restored puzzle is not made
+ * by the fake generator, so it is one release more than the allocations. */
+static void run_continued_session_test(void (*body)(const GamePort*,
+                                                    GameSession*))
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    GameSession session;
+    if (!init_game_session_from_save(game_port, &session, &saved, &board_codes,
+                                     &menu_codes, TEST_START_TIME))
+    {
+        destroy_game_port(game_port);
+        ASSERT_TRUE(false);
+    }
+    body(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(fake_free_calls, fake_alloc_count + 1);
+}
+
+static void check_s_in_the_pause_menu_requests_a_save(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    const int keys[] = {TEST_SAVE_KEY, TEST_SAVE_KEY_UPPER};
+    make_edit(game_port, session);
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    ASSERT_TRUE(session->timer.paused);
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        Board board_before = session->board;
+        GameTimer timer    = session->timer;
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_PAUSED_AT + 500),
+                      GAME_SESSION_SAVE);
+        ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+        ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_RESUME);
+        ASSERT_TRUE(boards_match(&session->board, &board_before));
+        ASSERT_TRUE(timers_match(&session->timer, &timer));
+        ASSERT_TRUE(session->timer.paused);
+        ASSERT_FALSE(session->undo_notice);
+    }
+}
+
+static void test_handle_game_session_key_s_in_the_pause_menu_asks_to_save(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_s_in_the_pause_menu_requests_a_save);
+}
+
+static void
+check_save_request_keeps_the_menu_selection(const GamePort* game_port,
+                                            GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    press(game_port, session, TEST_DOWN_KEY, TEST_PAUSED_AT);
+    ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_ABANDON);
+    ASSERT_EQ_INT(press(game_port, session, TEST_SAVE_KEY, TEST_PAUSED_AT),
+                  GAME_SESSION_SAVE);
+    ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_ABANDON);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(
+        press(game_port, session, TEST_SAVE_KEY_UPPER, TEST_PAUSED_AT),
+        GAME_SESSION_SAVE);
+}
+
+static void test_handle_game_session_key_save_request_keeps_the_selection(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_save_request_keeps_the_menu_selection);
+}
+
+static void check_s_while_playing_changes_nothing(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    make_edit(game_port, session);
+    Board board_before = session->board;
+    GameTimer timer    = session->timer;
+    PauseState pause   = session->pause;
+    ASSERT_EQ_INT(press(game_port, session, TEST_SAVE_KEY, TEST_START_TIME + 1),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(
+        press(game_port, session, TEST_SAVE_KEY_UPPER, TEST_START_TIME + 1),
+        GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(boards_match(&session->board, &board_before));
+    ASSERT_TRUE(timers_match(&session->timer, &timer));
+    ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+    ASSERT_FALSE(session->undo_notice);
+}
+
+static void test_handle_game_session_key_s_while_playing_changes_nothing(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_s_while_playing_changes_nothing);
+}
+
+static void check_s_in_a_prompt_is_ignored(const GamePort* game_port,
+                                           GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'N', TEST_START_TIME + 2);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    PauseState pause = session->pause;
+    ASSERT_EQ_INT(press(game_port, session, TEST_SAVE_KEY, TEST_START_TIME + 3),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(
+        press(game_port, session, TEST_SAVE_KEY_UPPER, TEST_START_TIME + 3),
+        GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+}
+
+static void test_handle_game_session_key_s_in_a_prompt_is_ignored(void)
+{
+    run_save_session_test(DIFFICULTY_EASY, check_s_in_a_prompt_is_ignored);
+}
+
+static void
+check_save_request_with_progress_opens_no_prompt(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    make_edit(game_port, session);
+    ASSERT_TRUE(session->board.history.count > 0);
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    ASSERT_EQ_INT(press(game_port, session, TEST_SAVE_KEY, TEST_PAUSED_AT),
+                  GAME_SESSION_SAVE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(session->pause.pending, GAME_ACTION_NONE);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+}
+
+static void
+test_handle_game_session_key_save_request_with_progress_no_prompt(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_save_request_with_progress_opens_no_prompt);
+}
+
+static void
+check_resume_after_a_save_request_plays_on(const GamePort* game_port,
+                                           GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    press(game_port, session, TEST_SAVE_KEY, TEST_PAUSED_AT);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ESCAPE, TEST_PAUSED_AT + 50),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 30);
+    make_edit(game_port, session);
+    ASSERT_EQ_INT(game_port->board_move_count_f(&session->board), 1);
+}
+
+static void test_handle_game_session_key_resume_after_a_save_request(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_resume_after_a_save_request_plays_on);
+}
+
+static void test_init_game_session_is_not_linked_to_a_save(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    memset(&session, TEST_GARBAGE_BYTE, sizeof session);
+    bool started = start_session(game_port, &session, TEST_START_TIME);
+    bool linked  = session.linked_to_save;
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_FALSE(linked);
+}
+
+static void test_init_game_session_from_save_restores_the_game(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    GameSession session;
+    memset(&session, TEST_GARBAGE_BYTE, sizeof session);
+    bool started =
+        init_game_session_from_save(game_port, &session, &saved, &board_codes,
+                                    &menu_codes, TEST_CONTINUED_AT);
+    int generated = fake_generate_calls;
+    ASSERT_TRUE(started);
+    bool owned   = session.puzzle != NULL && session.puzzle != &saved.puzzle &&
+                   session.board.puzzle == session.puzzle &&
+                   number_generations_equal(session.puzzle, &saved.puzzle);
+    bool entries = true;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        entries = entries && session.board.slots[i].editable ==
+                                 (saved.puzzle.available_array[i] ==
+                                  TETONOR_HIDDEN_NUMBER);
+        entries = entries &&
+                  session.board.slots[i].value == saved.entries.slot_values[i];
+        entries = entries && operand_groups_equal(&session.board.groups[i],
+                                                  &saved.entries.groups[i]);
+    }
+    bool timer_ok = session.timer.elapsed_seconds == SAVE_FIXTURE_ELAPSED &&
+                    session.timer.running && !session.timer.paused &&
+                    session.timer.last_tick == TEST_CONTINUED_AT;
+    bool state_ok = session.pause.screen == PAUSE_SCREEN_PLAYING &&
+                    !is_victory_shown(&session.victory) &&
+                    !session.undo_notice && session.linked_to_save;
+    bool keys_ok  = session.board_key_codes.enter == TEST_ENTER_KEY &&
+                    session.board_key_codes.pad_star == TEST_PAD_STAR_KEY &&
+                    session.menu_key_codes.up == TEST_UP_KEY &&
+                    session.menu_key_codes.down == TEST_DOWN_KEY;
+    int moves     = game_port->board_move_count_f(&session.board);
+    int history   = session.board.history.count;
+    BoardResult result = session.board.result;
+    int cursor         = session.board.cursor;
+    end_game_session(game_port, &session);
+    int freed = fake_free_calls;
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(generated, 0);
+    ASSERT_TRUE(owned);
+    ASSERT_TRUE(entries);
+    ASSERT_EQ_INT(moves, SAVE_FIXTURE_MOVES);
+    ASSERT_EQ_INT(history, 0);
+    ASSERT_EQ_INT(result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(cursor, TEST_RESTORED_CURSOR);
+    ASSERT_TRUE(timer_ok);
+    ASSERT_TRUE(state_ok);
+    ASSERT_TRUE(keys_ok);
+    ASSERT_EQ_INT(freed, 1);
+}
+
+static void test_init_game_session_from_save_invalid_save_owns_nothing(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.elapsed_seconds = -1;
+    GameSession session;
+    bool started =
+        init_game_session_from_save(game_port, &session, &saved, &board_codes,
+                                    &menu_codes, TEST_START_TIME);
+    int generated = fake_generate_calls;
+    int freed     = fake_free_calls;
+    destroy_game_port(game_port);
+    ASSERT_FALSE(started);
+    ASSERT_EQ_INT(generated, 0);
+    ASSERT_EQ_INT(freed, 0);
+}
+
+static void
+test_init_game_session_from_save_ignores_the_time_since_the_save(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    GameSession session;
+    ASSERT_TRUE(init_game_session_from_save(game_port, &session, &saved,
+                                            &board_codes, &menu_codes,
+                                            TEST_CONTINUED_AT));
+    press(game_port, &session, 'p', TEST_CONTINUED_AT + 5);
+    int32_t seconds = session.timer.elapsed_seconds;
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(seconds, SAVE_FIXTURE_ELAPSED + 5);
+}
+
+static void
+check_continued_game_new_game_key_starts_at_once(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    ASSERT_TRUE(session->linked_to_save);
+    ASSERT_FALSE(game_port->board_progress_would_be_lost_f(&session->board));
+    ASSERT_EQ_INT(press(game_port, session, 'N', TEST_CONTINUED_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->linked_to_save);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+    ASSERT_EQ_INT(fake_free_calls, 1);
+    ASSERT_TRUE(session_is_fresh(session, TEST_CONTINUED_AT));
+}
+
+static void test_restart_new_game_unlinks_a_continued_game(void)
+{
+    run_continued_session_test(
+        check_continued_game_new_game_key_starts_at_once);
+}
+
+static void
+check_continued_game_restart_button_unlinks(const GamePort* game_port,
+                                            GameSession* session)
+{
+    session->board.focus = BOARD_FOCUS_RESTART;
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_CONTINUED_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(session->linked_to_save);
+}
+
+static void test_restart_button_unlinks_a_continued_game(void)
+{
+    run_continued_session_test(check_continued_game_restart_button_unlinks);
+}
+
+static void check_confirmed_new_game_unlinks(const GamePort* game_port,
+                                             GameSession* session)
+{
+    make_edit(game_port, session);
+    ASSERT_EQ_INT(press(game_port, session, 'N', TEST_CONTINUED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    ASSERT_TRUE(session->linked_to_save);
+    ASSERT_EQ_INT(press(game_port, session, 'y', TEST_CONTINUED_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(session->linked_to_save);
+}
+
+static void test_confirmed_new_game_unlinks_a_continued_game(void)
+{
+    run_continued_session_test(check_confirmed_new_game_unlinks);
+}
+
+static void check_cancelled_new_game_keeps_the_link(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'N', TEST_CONTINUED_AT);
+    ASSERT_EQ_INT(press(game_port, session, TETONOR_KEY_NO, TEST_CONTINUED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->linked_to_save);
+    ASSERT_EQ_INT(fake_generate_calls, 0);
+}
+
+static void test_cancelled_new_game_keeps_a_continued_game_linked(void)
+{
+    run_continued_session_test(check_cancelled_new_game_keeps_the_link);
+}
+
+static void check_failed_new_game_keeps_the_link(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    fake_generate_fails = true;
+    ASSERT_EQ_INT(press(game_port, session, 'N', TEST_CONTINUED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->linked_to_save);
+    ASSERT_EQ_INT(game_port->board_move_count_f(&session->board),
+                  SAVE_FIXTURE_MOVES);
+}
+
+static void test_failed_new_game_keeps_a_continued_game_linked(void)
+{
+    run_continued_session_test(check_failed_new_game_keeps_the_link);
+}
+
+static void
+check_leaving_keeps_the_link_of_the_ended_game(const GamePort* game_port,
+                                               GameSession* session)
+{
+    ASSERT_EQ_INT(press(game_port, session, TEST_ESCAPE, TEST_CONTINUED_AT),
+                  GAME_SESSION_LEAVE);
+    ASSERT_TRUE(session->linked_to_save);
+}
+
+static void test_leaving_a_continued_game_does_not_unlink_it(void)
+{
+    run_continued_session_test(check_leaving_keeps_the_link_of_the_ended_game);
+}
+
+static void
+check_capture_uses_the_timer_and_the_port_difficulty(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    SavedGame saved;
+    memset(&saved, TEST_GARBAGE_BYTE, sizeof saved);
+    ASSERT_TRUE(capture_game_session(game_port, session, &saved));
+    ASSERT_EQ_INT(saved.difficulty, game_port->difficulty);
+    ASSERT_EQ_INT(saved.elapsed_seconds, 30);
+    ASSERT_EQ_INT(saved.move_count, 1);
+    ASSERT_EQ_INT(saved.entries.slot_values[session->board.cursor],
+                  TEST_TYPED_DIGIT - '0');
+    ASSERT_EQ_INT(saved.entries.result, BOARD_RESULT_PENDING);
+    ASSERT_TRUE(number_generations_equal(&saved.puzzle, session->puzzle));
+    ASSERT_TRUE(is_saved_game_valid(&saved));
+}
+
+static void test_capture_game_session_reads_the_timer_and_the_port(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_capture_uses_the_timer_and_the_port_difficulty);
+    run_save_session_test(DIFFICULTY_MEDIUM,
+                          check_capture_uses_the_timer_and_the_port_difficulty);
+    run_save_session_test(DIFFICULTY_HARD,
+                          check_capture_uses_the_timer_and_the_port_difficulty);
+}
+
+static void check_capture_of_a_solved_game_fails(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    session->board.result = BOARD_RESULT_CORRECT;
+    SavedGame saved;
+    memset(&saved, TEST_GARBAGE_BYTE, sizeof saved);
+    unsigned char before[sizeof saved];
+    memcpy(before, &saved, sizeof saved);
+    ASSERT_FALSE(capture_game_session(game_port, session, &saved));
+    ASSERT_EQ_INT(memcmp(before, &saved, sizeof saved), 0);
+}
+
+static void test_capture_game_session_solved_game_fails_untouched(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_capture_of_a_solved_game_fails);
+}
+
+static void
+check_continue_then_capture_gives_the_same_save(const GamePort* game_port,
+                                                GameSession* session)
+{
+    press(game_port, session, 'p', TEST_START_TIME);
+    SavedGame expected;
+    build_saved_game_fixture(&expected);
+    SavedGame captured;
+    ASSERT_TRUE(capture_game_session(game_port, session, &captured));
+    ASSERT_TRUE(saved_games_equal(&captured, &expected));
+}
+
+static void test_continue_then_capture_returns_the_same_save(void)
+{
+    run_continued_session_test(check_continue_then_capture_gives_the_same_save);
+}
+
+static void check_note_saved_links_the_session(const GamePort* game_port,
+                                               GameSession* session)
+{
+    ASSERT_FALSE(session->linked_to_save);
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_SAVED);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_SAVED);
+    ASSERT_TRUE(session->linked_to_save);
+}
+
+static void test_note_game_session_saved_links_the_session(void)
+{
+    run_save_session_test(DIFFICULTY_EASY, check_note_saved_links_the_session);
+}
+
+static void check_note_session_only_links_the_session(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_SESSION_ONLY);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_SESSION_ONLY);
+    ASSERT_TRUE(session->linked_to_save);
+}
+
+static void test_note_game_session_saved_session_only_links_the_session(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_note_session_only_links_the_session);
+}
+
+static void check_note_failed_does_not_link(const GamePort* game_port,
+                                            GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_FAILED);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_FAILED);
+    ASSERT_FALSE(session->linked_to_save);
+}
+
+static void test_note_game_session_saved_failed_does_not_link(void)
+{
+    run_save_session_test(DIFFICULTY_EASY, check_note_failed_does_not_link);
+}
+
+static void check_note_failed_keeps_an_existing_link(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_SAVED);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_FAILED);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_FAILED);
+    ASSERT_TRUE(session->linked_to_save);
+}
+
+static void test_note_game_session_saved_failed_keeps_an_existing_link(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_note_failed_keeps_an_existing_link);
+}
+
+static void check_notice_lives_while_the_menu_is_open(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    note_game_session_saved(session, PAUSE_SAVE_NOTICE_SAVED);
+    press(game_port, session, TEST_DOWN_KEY, TEST_PAUSED_AT);
+    press(game_port, session, TEST_UP_KEY, TEST_PAUSED_AT);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_SAVED);
+    press(game_port, session, TEST_ESCAPE, TEST_PAUSED_AT);
+    press(game_port, session, 'p', TEST_PAUSED_AT);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_NONE);
+}
+
+static void test_save_notice_lasts_until_the_pause_menu_closes(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_notice_lives_while_the_menu_is_open);
+}
+
+static void check_continued_game_completes_once_with_the_summed_summary(
+    const GamePort* game_port, GameSession* session)
+{
+    memcpy(session->board.groups, session->puzzle->solution_groups,
+           sizeof session->board.groups);
+    const int keys[] = {
+        TEST_RIGHT_KEY, TEST_SECOND_HIDDEN_SLOT_VALUE, TEST_RIGHT_KEY,
+        TEST_RIGHT_KEY, TEST_LAST_HIDDEN_SLOT_VALUE,   TEST_RIGHT_KEY,
+        TEST_ENTER_KEY};
+    press_all(game_port, session, keys, sizeof keys / sizeof keys[0],
+              TEST_CONTINUED_AT);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(update_game_session_timer(game_port, session,
+                                          TEST_CONTINUED_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_FALSE(update_game_session_timer(game_port, session,
+                                           TEST_CONTINUED_COMPLETED_AT + 5));
+    VictorySummary expected;
+    build_victory_summary(
+        SAVE_FIXTURE_ELAPSED + TEST_CONTINUED_EXTRA_SECONDS, DIFFICULTY_EASY,
+        SAVE_FIXTURE_MOVES + TEST_CONTINUED_EXTRA_MOVES, &expected);
+    for (int line = 0; line < VICTORY_SUMMARY_LINE_COUNT; line++)
+    {
+        ASSERT_EQ_INT(
+            strcmp(session->victory.summary.lines[line], expected.lines[line]),
+            0);
+    }
+}
+
+static void
+test_a_continued_game_completes_once_with_restored_moves_and_time(void)
+{
+    run_continued_session_test(
+        check_continued_game_completes_once_with_the_summed_summary);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_game_session_starts_playing);
@@ -1850,5 +2455,30 @@ int main(void)
     RUN_TEST(test_victory_again_after_new_game);
     RUN_TEST(test_handle_game_session_key_undo_keeps_the_move_count);
     RUN_TEST(test_restart_button_and_n_reset_moves_and_victory);
+    RUN_TEST(test_handle_game_session_key_s_in_the_pause_menu_asks_to_save);
+    RUN_TEST(test_handle_game_session_key_save_request_keeps_the_selection);
+    RUN_TEST(test_handle_game_session_key_s_while_playing_changes_nothing);
+    RUN_TEST(test_handle_game_session_key_s_in_a_prompt_is_ignored);
+    RUN_TEST(test_handle_game_session_key_resume_after_a_save_request);
+    RUN_TEST(test_init_game_session_is_not_linked_to_a_save);
+    RUN_TEST(test_init_game_session_from_save_restores_the_game);
+    RUN_TEST(test_init_game_session_from_save_invalid_save_owns_nothing);
+    RUN_TEST(test_restart_new_game_unlinks_a_continued_game);
+    RUN_TEST(test_restart_button_unlinks_a_continued_game);
+    RUN_TEST(test_confirmed_new_game_unlinks_a_continued_game);
+    RUN_TEST(test_cancelled_new_game_keeps_a_continued_game_linked);
+    RUN_TEST(test_failed_new_game_keeps_a_continued_game_linked);
+    RUN_TEST(test_leaving_a_continued_game_does_not_unlink_it);
+    RUN_TEST(test_capture_game_session_reads_the_timer_and_the_port);
+    RUN_TEST(test_capture_game_session_solved_game_fails_untouched);
+    RUN_TEST(test_continue_then_capture_returns_the_same_save);
+    RUN_TEST(test_note_game_session_saved_links_the_session);
+    RUN_TEST(test_note_game_session_saved_session_only_links_the_session);
+    RUN_TEST(test_note_game_session_saved_failed_does_not_link);
+    RUN_TEST(test_note_game_session_saved_failed_keeps_an_existing_link);
+    RUN_TEST(test_save_notice_lasts_until_the_pause_menu_closes);
+    RUN_TEST(test_handle_game_session_key_save_request_with_progress_no_prompt);
+    RUN_TEST(test_init_game_session_from_save_ignores_the_time_since_the_save);
+    RUN_TEST(test_a_continued_game_completes_once_with_restored_moves_and_time);
     return test_harness_result();
 }

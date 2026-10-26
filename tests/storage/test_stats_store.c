@@ -453,6 +453,12 @@ static void test_record_stats_store_game_saturated_count_saves_nothing(void)
     ASSERT_FALSE(created);
 }
 
+static void test_stats_path_max_is_unchanged_by_the_text_file_extraction(void)
+{
+    ASSERT_EQ_INT(TETONOR_STATS_PATH_MAX, TETONOR_TEXT_FILE_PATH_MAX);
+    ASSERT_EQ_INT(TETONOR_STATS_PATH_MAX, 1024);
+}
+
 int main(void)
 {
     RUN_TEST(test_save_and_load_statistics_round_trip);
@@ -479,5 +485,6 @@ int main(void)
     RUN_TEST(test_record_stats_store_game_save_failure_keeps_memory);
     RUN_TEST(test_record_stats_store_game_rejects_bad_difficulty);
     RUN_TEST(test_record_stats_store_game_saturated_count_saves_nothing);
+    RUN_TEST(test_stats_path_max_is_unchanged_by_the_text_file_extraction);
     return test_harness_result();
 }

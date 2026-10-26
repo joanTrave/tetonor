@@ -24,6 +24,10 @@ typedef struct
 /* Starts (or restarts) at zero, running and not paused. */
 void start_game_timer(GameTimer* timer, time_t now);
 
+/* Starts at now (running, not paused) with elapsed_seconds already counted,
+ * clamped to 0..TETONOR_TIMER_MAX_SECONDS. */
+void restore_game_timer(GameTimer* timer, int32_t elapsed_seconds, time_t now);
+
 /* While running, adds the time since the previous call (ignoring clock steps
  * backwards, capped at TETONOR_TIMER_MAX_SECONDS); then, if result is
  * BOARD_RESULT_CORRECT, stops and returns true. Returns false otherwise, and

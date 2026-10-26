@@ -29,4 +29,12 @@ bool build_stats_file_path(UserDataPlatform platform, const char* base_dir,
 bool prepare_stats_file_path(UserDataPlatform platform, const char* base_dir,
                              char* out, size_t size);
 
+/* As build_stats_file_path, ending in "saved_game.txt". */
+bool build_saved_game_file_path(UserDataPlatform platform, const char* base_dir,
+                                char* out, size_t size);
+
+/* As prepare_stats_file_path, ending in "saved_game.txt". */
+bool prepare_saved_game_file_path(UserDataPlatform platform,
+                                  const char* base_dir, char* out, size_t size);
+
 #endif

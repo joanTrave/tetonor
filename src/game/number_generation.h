@@ -53,6 +53,10 @@ DifficultyProfile get_difficulty_profile(int difficulty);
  * get_difficulty_profile. Returns NULL on allocation failure. */
 NumberGeneration* generate_random_numbers(int difficulty);
 
+/* A heap copy of source. Returns NULL when source is NULL or allocation fails.
+ * Release it with free_number_generation. */
+NumberGeneration* alloc_number_generation_copy(const NumberGeneration* source);
+
 /* Accepts NULL. */
 void free_number_generation(NumberGeneration* number_generation);
 

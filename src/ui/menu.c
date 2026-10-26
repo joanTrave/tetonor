@@ -11,12 +11,13 @@
 #include "ui.h"
 #include "../game/game_port.h"
 
-static const char menu_title[]       = "Welcome to Tetonor";
-static const char menu_start_hint[]  = "Press SPACE or ENTER to start game";
-static const char menu_stats_hint[]  = "Press S to view statistics";
-static const char menu_exit_hint[]   = "Press ESC to exit";
+static const char menu_title[]         = "Welcome to Tetonor";
+static const char menu_continue_hint[] = LAYOUT_MENU_CONTINUE_HINT;
+static const char menu_start_hint[]    = "Press SPACE or ENTER to start game";
+static const char menu_stats_hint[]    = "Press S to view statistics";
+static const char menu_exit_hint[]     = "Press ESC to exit";
 
-static const char difficulty_title[] = "Choose difficulty";
+static const char difficulty_title[]   = "Choose difficulty";
 static const char difficulty_choose_hint[] =
     "UP/DOWN to choose, SPACE or ENTER to start";
 static const char back_hint[]            = "Press ESC to go back";
@@ -29,9 +30,9 @@ static const char stats_average_header[] = "Average";
 
 static void clear_screen(void);
 static WINDOW* create_centered_window(int height, int width);
-static void draw_main_menu(WINDOW* win);
-static MenuResult read_menu_choice(WINDOW* win);
-static bool run_main_menu(MenuResult* result);
+static void draw_main_menu(WINDOW* win, bool can_continue);
+static MenuResult read_menu_choice(WINDOW* win, bool can_continue);
+static bool run_main_menu(MenuResult* result, bool can_continue);
 static MenuKeyCodes menu_key_codes(void);
 static void draw_difficulty_option(WINDOW* win, Difficulty level,
                                    Difficulty selected);
@@ -43,15 +44,21 @@ static void draw_stats_row(WINDOW* win, const Statistics* statistics,
 static void draw_stats_menu(WINDOW* win, const Statistics* statistics);
 static StatsMenuCommand read_stats_command(WINDOW* win);
 static bool run_stats_menu(const Statistics* statistics);
-static int run_game_session(Difficulty difficulty, StatsStore* stats_store);
+static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
+                            SavedGameStore* saved_game_store,
+                            const SavedGame* resume);
+static int run_saved_game(StatsStore* stats_store,
+                          SavedGameStore* saved_game_store);
 
-int ui_show_start_menu(StatsStore* stats_store)
+int ui_show_start_menu(StatsStore* stats_store,
+                       SavedGameStore* saved_game_store)
 {
     for (;;)
     {
         clear_screen();
         MenuResult menu_result;
-        if (!run_main_menu(&menu_result))
+        if (!run_main_menu(&menu_result,
+                           saved_game_store_game(saved_game_store) != NULL))
         {
             return EXIT_FAILURE;
         }
@@ -69,19 +76,29 @@ int ui_show_start_menu(StatsStore* stats_store)
             return EXIT_SUCCESS;
         }
 
-        clear_screen();
-        DifficultyMenu difficulty_menu;
-        if (!run_difficulty_menu(&difficulty_menu))
+        int status;
+        if (menu_result == MENU_CONTINUE)
         {
-            return EXIT_FAILURE;
+            clear_screen();
+            status = run_saved_game(stats_store, saved_game_store);
         }
-        if (difficulty_menu.status == DIFFICULTY_MENU_CANCELLED)
+        else
         {
-            continue;
-        }
+            clear_screen();
+            DifficultyMenu difficulty_menu;
+            if (!run_difficulty_menu(&difficulty_menu))
+            {
+                return EXIT_FAILURE;
+            }
+            if (difficulty_menu.status == DIFFICULTY_MENU_CANCELLED)
+            {
+                continue;
+            }
 
-        clear_screen();
-        int status = run_game_session(difficulty_menu.selected, stats_store);
+            clear_screen();
+            status = run_game_session(difficulty_menu.selected, stats_store,
+                                      saved_game_store, NULL);
+        }
         if (status != EXIT_SUCCESS)
         {
             return status;
@@ -111,13 +128,18 @@ static WINDOW* create_centered_window(int height, int width)
     return win;
 }
 
-static void draw_main_menu(WINDOW* win)
+static void draw_main_menu(WINDOW* win, bool can_continue)
 {
     box(win, 0, 0);
 
     int title_col =
         layout_centered_offset(LAYOUT_MENU_W, (int)strlen(menu_title));
     mvwprintw(win, LAYOUT_MENU_TITLE_ROW, title_col, "%s", menu_title);
+    if (can_continue)
+    {
+        mvwprintw(win, LAYOUT_MENU_CONTINUE_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+                  menu_continue_hint);
+    }
     mvwprintw(win, LAYOUT_MENU_START_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_start_hint);
     mvwprintw(win, LAYOUT_MENU_STATS_ROW, LAYOUT_MENU_TEXT_COL, "%s",
@@ -128,7 +150,7 @@ static void draw_main_menu(WINDOW* win)
     wrefresh(win);
 }
 
-static MenuResult read_menu_choice(WINDOW* win)
+static MenuResult read_menu_choice(WINDOW* win, bool can_continue)
 {
     MenuResult result = MENU_NONE;
     while (result == MENU_NONE)
@@ -139,20 +161,24 @@ static MenuResult read_menu_choice(WINDOW* win)
             return MENU_EXIT; /* input closed: leave instead of spinning */
         }
         result = menu_result_from_key(key, KEY_ENTER);
+        if (result == MENU_CONTINUE && !can_continue)
+        {
+            result = MENU_NONE;
+        }
     }
     return result;
 }
 
 /* Returns false when the window cannot be created. */
-static bool run_main_menu(MenuResult* result)
+static bool run_main_menu(MenuResult* result, bool can_continue)
 {
     WINDOW* win = create_centered_window(LAYOUT_MENU_H, LAYOUT_MENU_W);
     if (win == NULL)
     {
         return false;
     }
-    draw_main_menu(win);
-    *result = read_menu_choice(win);
+    draw_main_menu(win, can_continue);
+    *result = read_menu_choice(win, can_continue);
     delwin(win);
     return true;
 }
@@ -304,7 +330,9 @@ static bool run_stats_menu(const Statistics* statistics)
     return true;
 }
 
-static int run_game_session(Difficulty difficulty, StatsStore* stats_store)
+static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
+                            SavedGameStore* saved_game_store,
+                            const SavedGame* resume)
 {
     GamePort* game_port = create_game_port();
     if (game_port == NULL)
@@ -312,7 +340,22 @@ static int run_game_session(Difficulty difficulty, StatsStore* stats_store)
         return EXIT_FAILURE;
     }
     game_port->difficulty = difficulty;
-    int status            = ui_run(game_port, stats_store);
+    int status = ui_run(game_port, stats_store, saved_game_store, resume);
     destroy_game_port(game_port);
     return status;
+}
+
+/* Continues the saved game at its own difficulty. The game is copied first:
+ * saving during play replaces the stored one. */
+static int run_saved_game(StatsStore* stats_store,
+                          SavedGameStore* saved_game_store)
+{
+    const SavedGame* stored = saved_game_store_game(saved_game_store);
+    if (stored == NULL)
+    {
+        return EXIT_SUCCESS;
+    }
+    SavedGame saved = *stored;
+    return run_game_session((Difficulty)saved.difficulty, stats_store,
+                            saved_game_store, &saved);
 }

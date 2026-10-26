@@ -101,6 +101,13 @@ typedef struct
  * function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
 
+/* init_board, then slot values, group boxes and result from entries and the
+ * move count from move_count; slot_usages are recomputed and the move history
+ * stays empty. Requires entries consistent with puzzle (see
+ * is_saved_game_valid). */
+void restore_board(Board* board, const NumberGeneration* puzzle,
+                   const BoardSnapshot* entries, int move_count);
+
 /* Applies one player input. Slot and group focus edit and move; ACTIVATE on
  * the submit control judges the whole answer once every editable slot and
  * every group box is filled. Recomputes slot_usages after every input.

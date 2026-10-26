@@ -17,6 +17,10 @@ MenuResult menu_result_from_key(int key, int enter_key)
     {
         return MENU_STATISTICS;
     }
+    if (key == TETONOR_KEY_CONTINUE || key == TETONOR_KEY_CONTINUE_UPPER)
+    {
+        return MENU_CONTINUE;
+    }
     return MENU_NONE;
 }
 
@@ -73,6 +77,10 @@ PauseMenuCommand pause_menu_command_from_key(int key,
         key == TETONOR_KEY_PAUSE_UPPER)
     {
         return PAUSE_MENU_COMMAND_RESUME;
+    }
+    if (key == TETONOR_KEY_SAVE || key == TETONOR_KEY_SAVE_UPPER)
+    {
+        return PAUSE_MENU_COMMAND_SAVE;
     }
     return PAUSE_MENU_COMMAND_NONE;
 }

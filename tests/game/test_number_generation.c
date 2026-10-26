@@ -867,6 +867,65 @@ static void test_generate_random_numbers_valid_per_level(void)
     }
 }
 
+#define TEST_COPY_SENTINEL 4242
+
+static void test_alloc_number_generation_copy_equals_the_source(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        srand(TEST_SEED);
+        NumberGeneration* source = generate_random_numbers(test_levels[level]);
+        ASSERT_NOT_NULL(source);
+        NumberGeneration* copy = alloc_number_generation_copy(source);
+        ASSERT_NOT_NULL(copy);
+        bool distinct = copy != source;
+        bool same     = memcmp(copy, source, sizeof *source) == 0;
+        free_number_generation(copy);
+        free_number_generation(source);
+        ASSERT_TRUE(distinct);
+        ASSERT_TRUE(same);
+    }
+}
+
+static void test_alloc_number_generation_copy_is_independent(void)
+{
+    srand(TEST_SEED);
+    NumberGeneration* source = generate_random_numbers(TEST_DEFAULT_DIFFICULTY);
+    ASSERT_NOT_NULL(source);
+    NumberGeneration* copy = alloc_number_generation_copy(source);
+    ASSERT_NOT_NULL(copy);
+    NumberGeneration original = *source;
+    copy->available_array[0]  = TETONOR_HIDDEN_NUMBER;
+    copy->sum_matrix[0][0]    = TEST_COPY_SENTINEL;
+    ASSERT_TRUE(memcmp(source, &original, sizeof original) == 0);
+    source->solution_array[0] = TEST_COPY_SENTINEL;
+    ASSERT_TRUE(copy->solution_array[0] != TEST_COPY_SENTINEL);
+    free_number_generation(source);
+    int still_readable = copy->solution_groups[0].smaller;
+    free_number_generation(copy);
+    ASSERT_EQ_INT(still_readable, original.solution_groups[0].smaller);
+}
+
+static void test_alloc_number_generation_copy_of_null_is_null(void)
+{
+    ASSERT_NULL(alloc_number_generation_copy(NULL));
+}
+
+static void test_alloc_number_generation_copy_keeps_hidden_markers(void)
+{
+    srand(TEST_SEED);
+    NumberGeneration* source = generate_random_numbers(DIFFICULTY_HARD);
+    ASSERT_NOT_NULL(source);
+    NumberGeneration* copy = alloc_number_generation_copy(source);
+    ASSERT_NOT_NULL(copy);
+    int source_hidden = count_hidden(source);
+    int copy_hidden   = count_hidden(copy);
+    free_number_generation(copy);
+    free_number_generation(source);
+    ASSERT_EQ_INT(copy_hidden, source_hidden);
+    ASSERT_EQ_INT(copy_hidden, 12);
+}
+
 int main(void)
 {
     RUN_TEST(test_generate_random_numbers_returns_non_null);
@@ -902,5 +961,9 @@ int main(void)
     RUN_TEST(
         test_generate_random_numbers_easy_and_medium_hidden_entries_anchored);
     RUN_TEST(test_generate_random_numbers_hidden_entries_only_hidden_marker);
+    RUN_TEST(test_alloc_number_generation_copy_equals_the_source);
+    RUN_TEST(test_alloc_number_generation_copy_is_independent);
+    RUN_TEST(test_alloc_number_generation_copy_of_null_is_null);
+    RUN_TEST(test_alloc_number_generation_copy_keeps_hidden_markers);
     return test_harness_result();
 }

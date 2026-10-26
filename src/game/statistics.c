@@ -4,6 +4,7 @@
 
 #include "statistics.h"
 #include "game_timer.h"
+#include "text_format.h"
 
 #define MAX_NUMBER_DIGITS 18 /* 18 digits always fit an int64_t */
 
@@ -15,12 +16,6 @@ static const char* const file_keys[DIFFICULTY_COUNT] = {
     [DIFFICULTY_MEDIUM] = "medium",
     [DIFFICULTY_HARD]   = "hard",
 };
-
-typedef struct
-{
-    const char* at;
-    const char* end;
-} Cursor;
 
 void init_statistics(Statistics* statistics)
 {
@@ -68,22 +63,11 @@ bool statistics_average_seconds(const DifficultyStatistics* entry,
     return true;
 }
 
-/* Moves written bytes into *used. False when the text did not fit size. */
-static bool advance_output(int written, size_t size, size_t* used)
-{
-    if (written < 0 || (size_t)written >= size - *used)
-    {
-        return false;
-    }
-    *used += (size_t)written;
-    return true;
-}
-
 bool serialize_statistics(const Statistics* statistics, char* out, size_t size)
 {
     size_t used = 0;
-    if (size == 0 ||
-        !advance_output(snprintf(out, size, "%s\n", file_header), size, &used))
+    if (size == 0 || !advance_text_output(
+                         snprintf(out, size, "%s\n", file_header), size, &used))
     {
         return false;
     }
@@ -94,54 +78,12 @@ bool serialize_statistics(const Statistics* statistics, char* out, size_t size)
                                "%s %" PRId32 " %" PRId32 " %" PRId64 "\n",
                                file_keys[i], entry->completed_count,
                                entry->best_seconds, entry->total_seconds);
-        if (!advance_output(written, size, &used))
+        if (!advance_text_output(written, size, &used))
         {
             return false;
         }
     }
     return true;
-}
-
-static bool expect_text(Cursor* cursor, const char* text)
-{
-    size_t length = strlen(text);
-    if ((size_t)(cursor->end - cursor->at) < length ||
-        memcmp(cursor->at, text, length) != 0)
-    {
-        return false;
-    }
-    cursor->at += length;
-    return true;
-}
-
-/* A line ends with "\n" or "\r\n"; a lone '\r' is not a line end. */
-static bool expect_line_end(Cursor* cursor)
-{
-    return expect_text(cursor, "\n") || expect_text(cursor, "\r\n");
-}
-
-static bool is_digit(char c)
-{
-    return c >= '0' && c <= '9';
-}
-
-/* 1..MAX_NUMBER_DIGITS ASCII digits: no sign, no spaces. */
-static bool read_number(Cursor* cursor, int64_t* number)
-{
-    int64_t value = 0;
-    int digits    = 0;
-    while (cursor->at < cursor->end && is_digit(*cursor->at))
-    {
-        if (digits == MAX_NUMBER_DIGITS)
-        {
-            return false;
-        }
-        value = value * 10 + (*cursor->at - '0');
-        digits++;
-        cursor->at++;
-    }
-    *number = value;
-    return digits > 0;
 }
 
 static bool entry_is_consistent(const DifficultyStatistics* entry)
@@ -156,17 +98,18 @@ static bool entry_is_consistent(const DifficultyStatistics* entry)
 }
 
 /* "<key> <completed> <best> <total>" without its line end. */
-static bool read_entry(Cursor* cursor, const char* key,
+static bool read_entry(TextCursor* cursor, const char* key,
                        DifficultyStatistics* entry)
 {
     int64_t numbers[3];
-    if (!expect_text(cursor, key))
+    if (!read_text_literal(cursor, key))
     {
         return false;
     }
     for (size_t i = 0; i < 3; i++)
     {
-        if (!expect_text(cursor, " ") || !read_number(cursor, &numbers[i]))
+        if (!read_text_literal(cursor, " ") ||
+            !read_text_number(cursor, MAX_NUMBER_DIGITS, &numbers[i]))
         {
             return false;
         }
@@ -188,9 +131,10 @@ bool parse_statistics(const char* text, size_t length, Statistics* statistics)
     {
         return false;
     }
-    Cursor cursor = {text, text + length};
+    TextCursor cursor = make_text_cursor(text, length);
     Statistics parsed;
-    if (!expect_text(&cursor, file_header) || !expect_line_end(&cursor))
+    if (!read_text_literal(&cursor, file_header) ||
+        !read_text_line_end(&cursor))
     {
         return false;
     }
@@ -202,12 +146,13 @@ bool parse_statistics(const char* text, size_t length, Statistics* statistics)
             return false;
         }
         /* The last line may omit its line end. */
-        if (!(last && cursor.at == cursor.end) && !expect_line_end(&cursor))
+        if (!(last && is_text_cursor_at_end(&cursor)) &&
+            !read_text_line_end(&cursor))
         {
             return false;
         }
     }
-    if (cursor.at != cursor.end)
+    if (!is_text_cursor_at_end(&cursor))
     {
         return false;
     }

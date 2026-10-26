@@ -1004,6 +1004,143 @@ static void test_victory_keys_leave_the_other_screens_unchanged(void)
                   STATS_MENU_COMMAND_BACK);
 }
 
+static void test_save_and_continue_key_constants(void)
+{
+    ASSERT_EQ_INT(TETONOR_KEY_SAVE, 's');
+    ASSERT_EQ_INT(TETONOR_KEY_SAVE_UPPER, 'S');
+    ASSERT_EQ_INT(TETONOR_KEY_CONTINUE, 'c');
+    ASSERT_EQ_INT(TETONOR_KEY_CONTINUE_UPPER, 'C');
+}
+
+static void test_pause_menu_command_from_key_maps_the_save_keys(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key('s', &menu_codes),
+                  PAUSE_MENU_COMMAND_SAVE);
+    ASSERT_EQ_INT(pause_menu_command_from_key('S', &menu_codes),
+                  PAUSE_MENU_COMMAND_SAVE);
+    ASSERT_EQ_INT(pause_menu_command_from_key(TETONOR_KEY_SAVE, &menu_codes),
+                  PAUSE_MENU_COMMAND_SAVE);
+    ASSERT_EQ_INT(
+        pause_menu_command_from_key(TETONOR_KEY_SAVE_UPPER, &menu_codes),
+        PAUSE_MENU_COMMAND_SAVE);
+}
+
+static void test_pause_menu_command_from_key_save_needs_no_curses_codes(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key('s', &unavailable_menu_codes),
+                  PAUSE_MENU_COMMAND_SAVE);
+    ASSERT_EQ_INT(pause_menu_command_from_key('S', &unavailable_menu_codes),
+                  PAUSE_MENU_COMMAND_SAVE);
+}
+
+static void
+test_pause_menu_command_from_key_neighbours_of_save_are_ignored(void)
+{
+    const int keys[] = {'a', 'A', 'd', 'D', 'w', 'W', 'x', 'X', 'z', 'c', 'C'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(pause_menu_command_from_key(keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_NONE);
+    }
+}
+
+static void test_pause_menu_command_from_key_keeps_the_other_mappings(void)
+{
+    ASSERT_EQ_INT(pause_menu_command_from_key(TEST_UP_KEY, &menu_codes),
+                  PAUSE_MENU_COMMAND_UP);
+    ASSERT_EQ_INT(pause_menu_command_from_key(TEST_DOWN_KEY, &menu_codes),
+                  PAUSE_MENU_COMMAND_DOWN);
+    ASSERT_EQ_INT(pause_menu_command_from_key(' ', &menu_codes),
+                  PAUSE_MENU_COMMAND_SELECT);
+    ASSERT_EQ_INT(pause_menu_command_from_key('p', &menu_codes),
+                  PAUSE_MENU_COMMAND_RESUME);
+    ASSERT_EQ_INT(pause_menu_command_from_key(TETONOR_KEY_ESCAPE, &menu_codes),
+                  PAUSE_MENU_COMMAND_RESUME);
+}
+
+static void test_menu_result_from_key_c_continues(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key('c', TEST_ENTER_KEY), MENU_CONTINUE);
+    ASSERT_EQ_INT(menu_result_from_key('C', TEST_ENTER_KEY), MENU_CONTINUE);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_CONTINUE, TEST_ENTER_KEY),
+                  MENU_CONTINUE);
+    ASSERT_EQ_INT(
+        menu_result_from_key(TETONOR_KEY_CONTINUE_UPPER, TEST_ENTER_KEY),
+        MENU_CONTINUE);
+}
+
+static void test_menu_result_from_key_continue_is_its_own_result(void)
+{
+    ASSERT_TRUE(MENU_CONTINUE != MENU_START);
+    ASSERT_TRUE(MENU_CONTINUE != MENU_EXIT);
+    ASSERT_TRUE(MENU_CONTINUE != MENU_NONE);
+    ASSERT_TRUE(MENU_CONTINUE != MENU_STATISTICS);
+    ASSERT_EQ_INT(MENU_START, 0);
+    ASSERT_EQ_INT(MENU_EXIT, 1);
+    ASSERT_EQ_INT(MENU_NONE, 2);
+    ASSERT_EQ_INT(MENU_STATISTICS, 3);
+}
+
+static void test_menu_result_from_key_keeps_the_other_mappings(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key(' ', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key('\n', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key('\r', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key(TEST_ENTER_KEY, TEST_ENTER_KEY),
+                  MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_ESCAPE, TEST_ENTER_KEY),
+                  MENU_EXIT);
+    ASSERT_EQ_INT(menu_result_from_key('s', TEST_ENTER_KEY), MENU_STATISTICS);
+    ASSERT_EQ_INT(menu_result_from_key('S', TEST_ENTER_KEY), MENU_STATISTICS);
+}
+
+static void test_menu_result_from_key_neighbours_of_c_are_ignored(void)
+{
+    const int keys[] = {'b', 'B', 'v', 'V', 'x', 'X', 'd', 'D', 'f', 'F'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
+    }
+}
+
+static void test_the_continue_key_is_ignored_on_every_other_screen(void)
+{
+    const int keys[] = {'c', 'C'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(board_command_from_key(keys[i], &test_codes).kind,
+                      BOARD_COMMAND_NONE);
+        ASSERT_EQ_INT(pause_menu_command_from_key(keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
+                      PROMPT_COMMAND_NONE);
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+        ASSERT_EQ_INT(victory_menu_command_from_key(keys[i], &menu_codes),
+                      VICTORY_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(stats_menu_command_from_key(keys[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
+static void test_the_save_key_is_ignored_outside_the_pause_menu(void)
+{
+    const int keys[] = {'s', 'S'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(board_command_from_key(keys[i], &test_codes).kind,
+                      BOARD_COMMAND_NONE);
+        ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
+                      PROMPT_COMMAND_NONE);
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+        ASSERT_EQ_INT(victory_menu_command_from_key(keys[i], &menu_codes),
+                      VICTORY_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(stats_menu_command_from_key(keys[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -1073,5 +1210,16 @@ int main(void)
     RUN_TEST(test_victory_menu_command_from_key_ignores_other_keys);
     RUN_TEST(test_victory_menu_command_from_key_unavailable_codes_never_match);
     RUN_TEST(test_victory_keys_leave_the_other_screens_unchanged);
+    RUN_TEST(test_save_and_continue_key_constants);
+    RUN_TEST(test_pause_menu_command_from_key_maps_the_save_keys);
+    RUN_TEST(test_pause_menu_command_from_key_save_needs_no_curses_codes);
+    RUN_TEST(test_pause_menu_command_from_key_neighbours_of_save_are_ignored);
+    RUN_TEST(test_pause_menu_command_from_key_keeps_the_other_mappings);
+    RUN_TEST(test_menu_result_from_key_c_continues);
+    RUN_TEST(test_menu_result_from_key_continue_is_its_own_result);
+    RUN_TEST(test_menu_result_from_key_keeps_the_other_mappings);
+    RUN_TEST(test_menu_result_from_key_neighbours_of_c_are_ignored);
+    RUN_TEST(test_the_continue_key_is_ignored_on_every_other_screen);
+    RUN_TEST(test_the_save_key_is_ignored_outside_the_pause_menu);
     return test_harness_result();
 }
