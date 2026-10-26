@@ -7,6 +7,7 @@
 #include "game_timer.h"
 #include "number_generation.h"
 #include "palette.h"
+#include "saved_game.h"
 #include "statistics.h"
 
 #define TETONOR_DEFAULT_DIFFICULTY DIFFICULTY_MEDIUM
@@ -33,6 +34,14 @@ typedef struct
                                 time_t now);
     void (*pause_game_timer_f)(GameTimer* timer, time_t now);
     void (*resume_game_timer_f)(GameTimer* timer, time_t now);
+
+    /* Saved game related functions */
+    bool (*capture_saved_game_f)(const Board* board, int32_t elapsed_seconds,
+                                 int difficulty, SavedGame* out);
+    /* The returned puzzle is released with free_number_generation_f. */
+    NumberGeneration* (*restore_saved_game_f)(const SavedGame* saved,
+                                              Board* board, GameTimer* timer,
+                                              time_t now);
 } GamePort;
 
 /* Returns NULL on allocation failure. */

@@ -1203,6 +1203,72 @@ static void test_restart_game_with_real_port_resets_move_count(void)
     ASSERT_EQ_INT(after, 0);
 }
 
+#define TEST_SAVED_SECONDS 42
+#define TEST_RESTORE_TIME ((time_t)100)
+
+static void test_create_game_port_wires_saved_game_functions(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool capture_wired = game_port->capture_saved_game_f == capture_saved_game;
+    bool restore_wired = game_port->restore_saved_game_f == restore_saved_game;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(capture_wired);
+    ASSERT_TRUE(restore_wired);
+}
+
+static void test_game_port_saves_and_restores_a_game_through_the_port(void)
+{
+    srand(TEST_SEED);
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle =
+        game_port->generate_random_numbers_f(game_port->difficulty);
+    ASSERT_NOT_NULL(puzzle);
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    BoardInput input = {.kind = BOARD_INPUT_DIGIT, .digit = TEST_TYPED_VALUE};
+    game_port->apply_board_input_f(&board, input);
+    SavedGame saved;
+    bool captured = game_port->capture_saved_game_f(
+        &board, TEST_SAVED_SECONDS, game_port->difficulty, &saved);
+    Board restored;
+    GameTimer timer;
+    NumberGeneration* copy =
+        captured ? game_port->restore_saved_game_f(&saved, &restored, &timer,
+                                                   TEST_RESTORE_TIME)
+                 : NULL;
+    bool restored_ok =
+        copy != NULL && restored.puzzle == copy && copy != puzzle &&
+        memcmp(copy, puzzle, sizeof *puzzle) == 0 &&
+        restored.move_count == game_port->board_move_count_f(&board);
+    int typed_value = restored_ok ? restored.slots[board.cursor].value : -1;
+    int32_t seconds = timer.elapsed_seconds;
+    game_port->free_number_generation_f(copy);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(captured);
+    ASSERT_TRUE(restored_ok);
+    ASSERT_EQ_INT(typed_value, TEST_TYPED_VALUE);
+    ASSERT_EQ_INT(seconds, TEST_SAVED_SECONDS);
+}
+
+static void test_game_port_restore_through_the_port_rejects_a_bad_save(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    memset(&saved, 0, sizeof saved);
+    saved.difficulty      = -1;
+    saved.elapsed_seconds = -1;
+    Board board;
+    GameTimer timer;
+    NumberGeneration* puzzle =
+        game_port->restore_saved_game_f(&saved, &board, &timer, 0);
+    destroy_game_port(game_port);
+    ASSERT_NULL(puzzle);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -1247,5 +1313,8 @@ int main(void)
     RUN_TEST(test_restart_game_resets_move_count);
     RUN_TEST(test_restart_game_failure_keeps_move_count);
     RUN_TEST(test_restart_game_with_real_port_resets_move_count);
+    RUN_TEST(test_create_game_port_wires_saved_game_functions);
+    RUN_TEST(test_game_port_saves_and_restores_a_game_through_the_port);
+    RUN_TEST(test_game_port_restore_through_the_port_rejects_a_bad_save);
     return test_harness_result();
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../test_harness.h"
+#include "../../src/platform/user_data_dir.h"
 #include "../../src/storage/stats_store.h"
 #include "../../src/storage/text_file.h"
 
@@ -216,6 +217,74 @@ static void test_write_text_file_atomic_rejects_too_long_path(void)
     ASSERT_FALSE(file_exists(path));
 }
 
+static void test_read_text_file_keeps_binary_content(void)
+{
+    const char* path   = TEST_PATH("text_binary.txt");
+    const char bytes[] = {'a', '\0', 'b', '\r', '\n', '\x1a', 'c'};
+    ASSERT_TRUE(write_bytes(path, bytes, sizeof bytes));
+    char text[TEST_CAPACITY];
+    size_t length = 0;
+    TextFileReadResult result =
+        read_text_file(path, text, TEST_CAPACITY, &length);
+    remove_with_temporary(path);
+    ASSERT_EQ_INT(result, TEXT_FILE_READ_OK);
+    ASSERT_EQ_INT(length, sizeof bytes);
+    ASSERT_TRUE(memcmp(text, bytes, sizeof bytes) == 0);
+}
+
+static void test_read_text_file_missing_directory_is_missing(void)
+{
+    char text[TEST_BUFFER_SIZE];
+    size_t length = 0;
+    ASSERT_EQ_INT(read_text_file(TEST_PATH("no_such_directory/text.txt"), text,
+                                 sizeof text, &length),
+                  TEXT_FILE_READ_MISSING);
+}
+
+static void test_write_text_file_atomic_keeps_line_ends_as_given(void)
+{
+    const char* path = TEST_PATH("text_line_ends.txt");
+    remove_with_temporary(path);
+    ASSERT_TRUE(write_text_file_atomic(path, "a\nb\r\nc\n"));
+    char text[TEST_BUFFER_SIZE];
+    size_t length = 0;
+    TextFileReadResult result =
+        read_text_file(path, text, sizeof text, &length);
+    remove_with_temporary(path);
+    ASSERT_EQ_INT(result, TEXT_FILE_READ_OK);
+    ASSERT_EQ_INT(length, 7);
+    ASSERT_TRUE(memcmp(text, "a\nb\r\nc\n", 7) == 0);
+}
+
+/* The target is a non-empty directory: the write fails, the directory and its
+ * content survive and no temporary file is left behind. */
+static void test_write_text_file_atomic_keeps_the_target_it_cannot_replace(void)
+{
+    char directory_file[TETONOR_TEXT_FILE_PATH_MAX];
+    ASSERT_TRUE(prepare_stats_file_path(current_user_data_platform(),
+                                        TEST_TMP_DIR, directory_file,
+                                        sizeof directory_file));
+    char* last_separator = strrchr(directory_file, '/');
+    char* last_backslash = strrchr(directory_file, '\\');
+    if (last_backslash != NULL &&
+        (last_separator == NULL || last_backslash > last_separator))
+    {
+        last_separator = last_backslash;
+    }
+    ASSERT_NOT_NULL(last_separator);
+    char inside[TETONOR_TEXT_FILE_PATH_MAX];
+    *last_separator = '\0';
+    snprintf(inside, sizeof inside, "%s/keep.txt", directory_file);
+    ASSERT_TRUE(write_bytes(inside, "kept", 4));
+    bool written = write_text_file_atomic(directory_file, "text");
+    bool kept    = file_exists(inside);
+    bool left    = temporary_file_exists(directory_file);
+    remove(inside);
+    ASSERT_FALSE(written);
+    ASSERT_TRUE(kept);
+    ASSERT_FALSE(left);
+}
+
 int main(void)
 {
     RUN_TEST(test_text_file_path_limit_is_shared_with_the_stats_store);
@@ -230,5 +299,9 @@ int main(void)
     RUN_TEST(test_write_text_file_atomic_empty_text_writes_an_empty_file);
     RUN_TEST(test_write_text_file_atomic_unwritable_location_fails);
     RUN_TEST(test_write_text_file_atomic_rejects_too_long_path);
+    RUN_TEST(test_read_text_file_keeps_binary_content);
+    RUN_TEST(test_read_text_file_missing_directory_is_missing);
+    RUN_TEST(test_write_text_file_atomic_keeps_line_ends_as_given);
+    RUN_TEST(test_write_text_file_atomic_keeps_the_target_it_cannot_replace);
     return test_harness_result();
 }

@@ -748,6 +748,204 @@ static void test_theme_values_are_appended(void)
     ASSERT_EQ_INT(PAUSE_OPTION_COUNT, 2);
 }
 
+#define TEST_SAVE_NOTICE_ABOVE_RANGE 99
+
+static void test_game_action_save_is_a_new_action_after_the_existing_ones(void)
+{
+    ASSERT_EQ_INT(GAME_ACTION_NONE, 0);
+    ASSERT_EQ_INT(GAME_ACTION_NEW_GAME, 1);
+    ASSERT_EQ_INT(GAME_ACTION_MAIN_MENU, 2);
+    ASSERT_EQ_INT(GAME_ACTION_SAVE, 3);
+}
+
+static void test_pause_options_are_still_resume_and_abandon(void)
+{
+    ASSERT_EQ_INT(PAUSE_OPTION_RESUME, 0);
+    ASSERT_EQ_INT(PAUSE_OPTION_ABANDON, 1);
+    ASSERT_EQ_INT(PAUSE_OPTION_COUNT, 2);
+}
+
+static void test_init_pause_state_has_no_save_notice(void)
+{
+    PauseState state;
+    memset(&state, 0x5a, sizeof state);
+    init_pause_state(&state);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_NONE);
+}
+
+static void test_open_pause_menu_clears_the_save_notice(void)
+{
+    PauseState state;
+    open_menu(&state);
+    set_pause_save_notice(&state, PAUSE_SAVE_NOTICE_SAVED);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_RESUME, false);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_SAVED);
+    open_pause_menu(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_NONE);
+}
+
+static void
+test_open_pause_menu_ignored_while_paused_keeps_the_save_notice(void)
+{
+    PauseState state;
+    open_menu(&state);
+    set_pause_save_notice(&state, PAUSE_SAVE_NOTICE_FAILED);
+    open_pause_menu(&state);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_FAILED);
+}
+
+static void test_set_pause_save_notice_sets_every_notice(void)
+{
+    for (int notice = 0; notice < PAUSE_SAVE_NOTICE_COUNT; notice++)
+    {
+        PauseState state;
+        open_menu(&state);
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_DOWN, false);
+        PauseState before = state;
+        set_pause_save_notice(&state, (PauseSaveNotice)notice);
+        ASSERT_EQ_INT(state.save_notice, notice);
+        ASSERT_TRUE(states_equal(&state, &before));
+    }
+}
+
+static void test_set_pause_save_notice_replaces_the_previous_notice(void)
+{
+    PauseState state;
+    open_menu(&state);
+    set_pause_save_notice(&state, PAUSE_SAVE_NOTICE_FAILED);
+    set_pause_save_notice(&state, PAUSE_SAVE_NOTICE_SAVED);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_SAVED);
+    set_pause_save_notice(&state, PAUSE_SAVE_NOTICE_NONE);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_NONE);
+}
+
+static void test_apply_pause_menu_command_save_asks_for_a_save(void)
+{
+    PauseState state;
+    open_menu(&state);
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, false),
+        GAME_ACTION_SAVE);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.selected, PAUSE_OPTION_RESUME);
+    ASSERT_EQ_INT(state.pending, GAME_ACTION_NONE);
+    ASSERT_TRUE(is_game_paused(&state));
+}
+
+static void test_apply_pause_menu_command_save_keeps_the_selection(void)
+{
+    PauseState state;
+    open_menu(&state);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_DOWN, false);
+    PauseState before = state;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, false),
+        GAME_ACTION_SAVE);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.selected, PAUSE_OPTION_ABANDON);
+}
+
+static void test_apply_pause_menu_command_save_never_opens_a_prompt(void)
+{
+    PauseState state;
+    open_menu(&state);
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, true),
+        GAME_ACTION_SAVE);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.pending, GAME_ACTION_NONE);
+}
+
+static void test_apply_pause_menu_command_save_can_repeat(void)
+{
+    PauseState state;
+    open_menu(&state);
+    for (int i = 0; i < 3; i++)
+    {
+        ASSERT_EQ_INT(
+            apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, false),
+            GAME_ACTION_SAVE);
+    }
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+}
+
+static void test_apply_pause_menu_command_save_does_not_set_a_notice(void)
+{
+    PauseState state;
+    open_menu(&state);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, false);
+    ASSERT_EQ_INT(state.save_notice, PAUSE_SAVE_NOTICE_NONE);
+}
+
+static void test_apply_pause_menu_command_save_ignored_while_playing(void)
+{
+    PauseState state;
+    init_pause_state(&state);
+    PauseState before = state;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, false),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_PLAYING);
+}
+
+static void test_apply_pause_menu_command_save_ignored_in_a_prompt(void)
+{
+    PauseState state;
+    open_prompt_from_game(&state, GAME_ACTION_NEW_GAME);
+    PauseState before = state;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, true),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&state, &before));
+    open_prompt_from_abandon(&state);
+    before = state;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_SAVE, true),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_PROMPT);
+}
+
+static void test_pause_save_notice_text_says_what_happened(void)
+{
+    ASSERT_TRUE(strcmp(pause_save_notice_text(PAUSE_SAVE_NOTICE_NONE), "") ==
+                0);
+    ASSERT_TRUE(strcmp(pause_save_notice_text(PAUSE_SAVE_NOTICE_SAVED),
+                       "Game saved.") == 0);
+    ASSERT_TRUE(strcmp(pause_save_notice_text(PAUSE_SAVE_NOTICE_SESSION_ONLY),
+                       "Saved for this session only.") == 0);
+    ASSERT_TRUE(strcmp(pause_save_notice_text(PAUSE_SAVE_NOTICE_FAILED),
+                       "This game cannot be saved.") == 0);
+}
+
+static void test_pause_save_notice_text_clamps_out_of_range_values(void)
+{
+    ASSERT_TRUE(strcmp(pause_save_notice_text(TEST_BELOW_RANGE), "") == 0);
+    ASSERT_TRUE(strcmp(pause_save_notice_text(PAUSE_SAVE_NOTICE_COUNT),
+                       pause_save_notice_text(PAUSE_SAVE_NOTICE_FAILED)) == 0);
+    ASSERT_TRUE(strcmp(pause_save_notice_text(TEST_SAVE_NOTICE_ABOVE_RANGE),
+                       pause_save_notice_text(PAUSE_SAVE_NOTICE_FAILED)) == 0);
+}
+
+static void test_pause_save_notice_texts_differ(void)
+{
+    for (int first = 0; first < PAUSE_SAVE_NOTICE_COUNT; first++)
+    {
+        for (int second = first + 1; second < PAUSE_SAVE_NOTICE_COUNT; second++)
+        {
+            ASSERT_TRUE(strcmp(pause_save_notice_text(first),
+                               pause_save_notice_text(second)) != 0);
+        }
+    }
+}
+
+static void test_prompt_question_for_save_is_empty(void)
+{
+    ASSERT_TRUE(strcmp(prompt_question(GAME_ACTION_SAVE), "") == 0);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_pause_state_is_playing);
@@ -794,5 +992,23 @@ int main(void)
     RUN_TEST(test_theme_screen_ignores_open_pause_menu);
     RUN_TEST(test_is_theme_screen_shown_only_on_the_theme_screen);
     RUN_TEST(test_theme_values_are_appended);
+    RUN_TEST(test_game_action_save_is_a_new_action_after_the_existing_ones);
+    RUN_TEST(test_pause_options_are_still_resume_and_abandon);
+    RUN_TEST(test_init_pause_state_has_no_save_notice);
+    RUN_TEST(test_open_pause_menu_clears_the_save_notice);
+    RUN_TEST(test_open_pause_menu_ignored_while_paused_keeps_the_save_notice);
+    RUN_TEST(test_set_pause_save_notice_sets_every_notice);
+    RUN_TEST(test_set_pause_save_notice_replaces_the_previous_notice);
+    RUN_TEST(test_apply_pause_menu_command_save_asks_for_a_save);
+    RUN_TEST(test_apply_pause_menu_command_save_keeps_the_selection);
+    RUN_TEST(test_apply_pause_menu_command_save_never_opens_a_prompt);
+    RUN_TEST(test_apply_pause_menu_command_save_can_repeat);
+    RUN_TEST(test_apply_pause_menu_command_save_does_not_set_a_notice);
+    RUN_TEST(test_apply_pause_menu_command_save_ignored_while_playing);
+    RUN_TEST(test_apply_pause_menu_command_save_ignored_in_a_prompt);
+    RUN_TEST(test_pause_save_notice_text_says_what_happened);
+    RUN_TEST(test_pause_save_notice_text_clamps_out_of_range_values);
+    RUN_TEST(test_pause_save_notice_texts_differ);
+    RUN_TEST(test_prompt_question_for_save_is_empty);
     return test_harness_result();
 }

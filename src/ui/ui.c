@@ -12,15 +12,24 @@
 static BoardKeyCodes board_key_codes(void);
 static MenuKeyCodes menu_key_codes(void);
 static void draw_board(const GameSession* session);
+static void save_session(const GamePort* game_port, GameSession* session,
+                         SavedGameStore* saved_game_store);
 
 int ui_run(const GamePort* game_port, StatsStore* stats_store,
-           ConfigStore* config_store)
+           ConfigStore* config_store, SavedGameStore* saved_game_store,
+           const SavedGame* resume)
 {
     GameSession session;
     BoardKeyCodes board_codes = board_key_codes();
     MenuKeyCodes menu_codes   = menu_key_codes();
-    if (!init_game_session(game_port, &session, &board_codes, &menu_codes,
-                           time(NULL)))
+    time_t started            = time(NULL);
+    bool ready =
+        resume == NULL
+            ? init_game_session(game_port, &session, &board_codes, &menu_codes,
+                                started)
+            : init_game_session_from_save(game_port, &session, resume,
+                                          &board_codes, &menu_codes, started);
+    if (!ready)
     {
         return EXIT_FAILURE;
     }
@@ -49,6 +58,10 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
             {
                 break;
             }
+            if (outcome == GAME_SESSION_SAVE)
+            {
+                save_session(game_port, &session, saved_game_store);
+            }
             if (outcome == GAME_SESSION_THEME_CHANGED)
             {
                 ui_apply_theme(config_store, session.theme);
@@ -61,6 +74,12 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
         {
             record_stats_store_game(stats_store, game_port->difficulty,
                                     session.timer.elapsed_seconds);
+            /* The saved game is solved: it is not worth keeping. A failed
+             * removal is ignored. */
+            if (session.linked_to_save)
+            {
+                discard_saved_game_store(saved_game_store);
+            }
         }
         if (keyed || session.timer.elapsed_seconds != drawn_seconds)
         {
@@ -144,4 +163,32 @@ void ui_apply_theme(ConfigStore* config_store, int theme)
     /* A failed save is ignored: the theme still applies for the session. */
     set_config_store_theme(config_store, theme);
     apply_theme_styles(config_store->theme);
+}
+
+static PauseSaveNotice save_notice(SavedGameSaveResult result)
+{
+    switch (result)
+    {
+        case SAVED_GAME_SAVE_STORED:
+            return PAUSE_SAVE_NOTICE_SAVED;
+        case SAVED_GAME_SAVE_SESSION_ONLY:
+            return PAUSE_SAVE_NOTICE_SESSION_ONLY;
+        case SAVED_GAME_SAVE_REJECTED:
+            break;
+    }
+    return PAUSE_SAVE_NOTICE_FAILED;
+}
+
+/* Stores the paused game and reports on the pause menu how it went. A game
+ * that cannot be captured or is rejected is not saved, and play goes on. */
+static void save_session(const GamePort* game_port, GameSession* session,
+                         SavedGameStore* saved_game_store)
+{
+    SavedGame saved;
+    PauseSaveNotice notice = PAUSE_SAVE_NOTICE_FAILED;
+    if (capture_game_session(game_port, session, &saved))
+    {
+        notice = save_notice(save_saved_game_store(saved_game_store, &saved));
+    }
+    note_game_session_saved(session, notice);
 }

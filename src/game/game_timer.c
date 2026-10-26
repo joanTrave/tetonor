@@ -49,6 +49,12 @@ void start_game_timer(GameTimer* timer, time_t now)
     timer->paused          = false;
 }
 
+void restore_game_timer(GameTimer* timer, int32_t elapsed_seconds, time_t now)
+{
+    start_game_timer(timer, now);
+    timer->elapsed_seconds = clamp_seconds(elapsed_seconds);
+}
+
 bool update_game_timer(GameTimer* timer, BoardResult result, time_t now)
 {
     if (!timer->running || timer->paused)

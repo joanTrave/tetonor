@@ -14,6 +14,7 @@
 #include "user_data_dir.h"
 
 #define TETONOR_STATS_FILE_NAME "statistics.txt"
+#define TETONOR_SAVED_GAME_FILE_NAME "saved_game.txt"
 #define USER_DATA_DIR_MODE 0700
 
 typedef struct
@@ -186,4 +187,18 @@ bool prepare_stats_file_path(UserDataPlatform platform, const char* base_dir,
 {
     return prepare_user_data_file_path(platform, base_dir,
                                        TETONOR_STATS_FILE_NAME, out, size);
+}
+
+bool build_saved_game_file_path(UserDataPlatform platform, const char* base_dir,
+                                char* out, size_t size)
+{
+    return build_user_data_file_path(platform, base_dir,
+                                     TETONOR_SAVED_GAME_FILE_NAME, out, size);
+}
+
+bool prepare_saved_game_file_path(UserDataPlatform platform,
+                                  const char* base_dir, char* out, size_t size)
+{
+    return prepare_user_data_file_path(platform, base_dir,
+                                       TETONOR_SAVED_GAME_FILE_NAME, out, size);
 }

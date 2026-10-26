@@ -923,6 +923,92 @@ static void test_layout_help_lines_name_theme_shortcut(void)
     }
 }
 
+static void test_layout_main_menu_continue_row_is_the_free_row(void)
+{
+    ASSERT_EQ_INT(LAYOUT_MENU_CONTINUE_ROW, 2);
+    ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW < LAYOUT_MENU_CONTINUE_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_CONTINUE_ROW < LAYOUT_MENU_START_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_CONTINUE_ROW >= 1);
+    ASSERT_TRUE(LAYOUT_MENU_CONTINUE_ROW <= LAYOUT_MENU_H - 2);
+}
+
+static void test_layout_main_menu_is_not_resized_by_continue(void)
+{
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 8);
+    ASSERT_EQ_INT(LAYOUT_MENU_W, 50);
+    ASSERT_EQ_INT(LAYOUT_MENU_TITLE_ROW, 1);
+    ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
+    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
+    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 6);
+    ASSERT_POINT(layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                               LAYOUT_MENU_H, LAYOUT_MENU_W),
+                 9, 15);
+}
+
+static void test_layout_main_menu_continue_hint_fits_window_width(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_MENU_CONTINUE_HINT,
+                       "Press C to continue the saved game") == 0);
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL + (int)strlen(LAYOUT_MENU_CONTINUE_HINT) <=
+                LAYOUT_MENU_W - 1);
+}
+
+static void test_layout_pause_panel_save_rows_fit(void)
+{
+    ASSERT_EQ_INT(LAYOUT_PAUSE_NOTICE_ROW, 2);
+    ASSERT_EQ_INT(LAYOUT_PAUSE_SAVE_ROW, 5);
+    ASSERT_TRUE(LAYOUT_PAUSE_NOTICE_ROW > LAYOUT_PAUSE_TITLE_ROW);
+    ASSERT_TRUE(LAYOUT_PAUSE_NOTICE_ROW <
+                layout_pause_option_row(PAUSE_OPTION_RESUME));
+    ASSERT_TRUE(LAYOUT_PAUSE_SAVE_ROW >
+                layout_pause_option_row(PAUSE_OPTION_ABANDON));
+    ASSERT_TRUE(LAYOUT_PAUSE_SAVE_ROW < LAYOUT_PAUSE_CHOOSE_ROW);
+    ASSERT_TRUE(LAYOUT_PAUSE_NOTICE_ROW >= 1);
+    ASSERT_TRUE(LAYOUT_PAUSE_SAVE_ROW <= LAYOUT_PAUSE_MENU_H - 2);
+}
+
+static void test_layout_pause_panel_rows_are_all_distinct(void)
+{
+    const int rows[] = {LAYOUT_PAUSE_TITLE_ROW,
+                        LAYOUT_PAUSE_NOTICE_ROW,
+                        layout_pause_option_row(PAUSE_OPTION_RESUME),
+                        layout_pause_option_row(PAUSE_OPTION_ABANDON),
+                        LAYOUT_PAUSE_SAVE_ROW,
+                        LAYOUT_PAUSE_CHOOSE_ROW,
+                        LAYOUT_PAUSE_BACK_ROW};
+    for (size_t first = 0; first < sizeof rows / sizeof rows[0]; first++)
+    {
+        for (size_t second = first + 1; second < sizeof rows / sizeof rows[0];
+             second++)
+        {
+            ASSERT_TRUE(rows[first] != rows[second]);
+        }
+    }
+}
+
+static void test_layout_pause_panel_is_not_resized_by_save(void)
+{
+    ASSERT_EQ_INT(LAYOUT_PAUSE_MENU_H, 9);
+    ASSERT_EQ_INT(LAYOUT_PAUSE_MENU_W, LAYOUT_MENU_W);
+    ASSERT_EQ_INT(layout_pause_option_row(PAUSE_OPTION_RESUME), 3);
+    ASSERT_EQ_INT(layout_pause_option_row(PAUSE_OPTION_ABANDON), 4);
+    ASSERT_EQ_INT(LAYOUT_PAUSE_CHOOSE_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_PAUSE_BACK_ROW, 7);
+}
+
+static void test_layout_pause_save_texts_fit_the_panel_width(void)
+{
+    int text_width = LAYOUT_PAUSE_MENU_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_TRUE(strcmp(LAYOUT_PAUSE_SAVE_HINT, "Press S to save the game") ==
+                0);
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_SAVE_HINT) <= text_width);
+    for (int notice = 0; notice < PAUSE_SAVE_NOTICE_COUNT; notice++)
+    {
+        ASSERT_TRUE((int)strlen(pause_save_notice_text(notice)) <= text_width);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -1007,5 +1093,12 @@ int main(void)
     RUN_TEST(test_layout_main_menu_theme_hint_fits);
     RUN_TEST(test_layout_pause_back_hint_mentions_theme);
     RUN_TEST(test_layout_help_lines_name_theme_shortcut);
+    RUN_TEST(test_layout_main_menu_continue_row_is_the_free_row);
+    RUN_TEST(test_layout_main_menu_is_not_resized_by_continue);
+    RUN_TEST(test_layout_main_menu_continue_hint_fits_window_width);
+    RUN_TEST(test_layout_pause_panel_save_rows_fit);
+    RUN_TEST(test_layout_pause_panel_rows_are_all_distinct);
+    RUN_TEST(test_layout_pause_panel_is_not_resized_by_save);
+    RUN_TEST(test_layout_pause_save_texts_fit_the_panel_width);
     return test_harness_result();
 }

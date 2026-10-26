@@ -15,7 +15,8 @@ typedef enum
     GAME_SESSION_CONTINUE,
     GAME_SESSION_RESTARTED,     /* a new puzzle */
     GAME_SESSION_THEME_CHANGED, /* session.theme changed: apply and save it */
-    GAME_SESSION_LEAVE          /* back to the main menu; nothing recorded */
+    GAME_SESSION_LEAVE,         /* back to the main menu; nothing recorded */
+    GAME_SESSION_SAVE           /* the caller captures and stores the game */
 } GameSessionOutcome;
 
 /* Everything one running game owns; the board points into puzzle. */
@@ -29,6 +30,8 @@ typedef struct
     PaletteTheme theme;   /* active theme, recorded only */
     ThemeMenu theme_menu; /* meaningful while the theme screen is shown */
     bool undo_notice;     /* set by an empty undo, cleared by the next key */
+    bool linked_to_save;  /* this game is the saved one: completing it
+                             discards the save */
     BoardKeyCodes board_key_codes;
     MenuKeyCodes menu_key_codes;
 } GameSession;
@@ -41,6 +44,26 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
                        const BoardKeyCodes* board_key_codes,
                        const MenuKeyCodes* menu_key_codes, time_t now);
 
+/* As init_game_session, but over saved: the puzzle, entries, move count and
+ * elapsed time come from the save through restore_saved_game_f (the undo
+ * history starts empty), and the session is linked to the save. Returns false,
+ * owning nothing, when restoring fails. */
+bool init_game_session_from_save(const GamePort* game_port,
+                                 GameSession* session, const SavedGame* saved,
+                                 const BoardKeyCodes* board_key_codes,
+                                 const MenuKeyCodes* menu_key_codes,
+                                 time_t now);
+
+/* Captures the game through capture_saved_game_f with the timer's elapsed
+ * seconds and the port's difficulty. Returns false, leaving *out untouched,
+ * when the game cannot be saved. */
+bool capture_game_session(const GamePort* game_port, const GameSession* session,
+                          SavedGame* out);
+
+/* Shows notice on the pause menu. Unless it is PAUSE_SAVE_NOTICE_FAILED, the
+ * game is now stored, so the session is linked to the save. */
+void note_game_session_saved(GameSession* session, PauseSaveNotice notice);
+
 /* Records theme as the session's active theme (the default when it is not a
  * theme). Touches nothing else; the caller applies the styles. */
 void set_game_session_theme(GameSession* session, int theme);
@@ -51,7 +74,8 @@ void end_game_session(const GamePort* game_port, GameSession* session);
 
 /* Applies one key on the current screen (game, pause menu, theme screen, prompt
  * or victory screen). The timer is paused while the menu, the theme screen or a
- * prompt is shown. */
+ * prompt is shown. Returns GAME_SESSION_SAVE when the pause menu asks to save;
+ * the timer stays paused. */
 GameSessionOutcome handle_game_session_key(const GamePort* game_port,
                                            GameSession* session, int key,
                                            time_t now);

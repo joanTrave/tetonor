@@ -59,6 +59,15 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     refresh_slot_usages(board);
 }
 
+void restore_board(Board* board, const NumberGeneration* puzzle,
+                   const BoardSnapshot* entries, int move_count)
+{
+    init_board(board, puzzle);
+    restore_snapshot(board, entries);
+    board->move_count = move_count;
+    refresh_slot_usages(board);
+}
+
 /* The inputs a locked board still takes: movement, and ACTIVATE anywhere but
  * on the submit control. */
 static bool allowed_while_locked(const Board* board, BoardInput input)

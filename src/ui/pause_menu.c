@@ -5,6 +5,13 @@ static const char* const pause_labels[PAUSE_OPTION_COUNT] = {
     [PAUSE_OPTION_ABANDON] = "Abandon",
 };
 
+static const char* const save_notice_texts[PAUSE_SAVE_NOTICE_COUNT] = {
+    [PAUSE_SAVE_NOTICE_NONE]         = "",
+    [PAUSE_SAVE_NOTICE_SAVED]        = "Game saved.",
+    [PAUSE_SAVE_NOTICE_SESSION_ONLY] = "Saved for this session only.",
+    [PAUSE_SAVE_NOTICE_FAILED]       = "This game cannot be saved.",
+};
+
 static const char* const prompt_labels[PROMPT_OPTION_COUNT] = {
     [PROMPT_OPTION_YES] = "Yes",
     [PROMPT_OPTION_NO]  = "No",
@@ -74,6 +81,8 @@ static GameAction apply_open_menu_command(PauseState* state,
             break;
         case PAUSE_MENU_COMMAND_SELECT:
             return select_pause_option(state, progress_at_risk);
+        case PAUSE_MENU_COMMAND_SAVE:
+            return GAME_ACTION_SAVE;
         case PAUSE_MENU_COMMAND_NONE:
             break;
     }
@@ -118,11 +127,12 @@ static GameAction apply_open_prompt_command(PauseState* state,
 
 void init_pause_state(PauseState* state)
 {
-    state->screen    = PAUSE_SCREEN_PLAYING;
-    state->selected  = PAUSE_OPTION_RESUME;
-    state->answer    = PROMPT_OPTION_NO;
-    state->pending   = GAME_ACTION_NONE;
-    state->cancel_to = PAUSE_SCREEN_PLAYING;
+    state->screen      = PAUSE_SCREEN_PLAYING;
+    state->selected    = PAUSE_OPTION_RESUME;
+    state->answer      = PROMPT_OPTION_NO;
+    state->pending     = GAME_ACTION_NONE;
+    state->cancel_to   = PAUSE_SCREEN_PLAYING;
+    state->save_notice = PAUSE_SAVE_NOTICE_NONE;
 }
 
 bool is_game_paused(const PauseState* state)
@@ -136,8 +146,9 @@ void open_pause_menu(PauseState* state)
     {
         return;
     }
-    state->screen   = PAUSE_SCREEN_MENU;
-    state->selected = PAUSE_OPTION_RESUME;
+    state->screen      = PAUSE_SCREEN_MENU;
+    state->selected    = PAUSE_OPTION_RESUME;
+    state->save_notice = PAUSE_SAVE_NOTICE_NONE;
 }
 
 void open_theme_screen(PauseState* state)
@@ -221,4 +232,14 @@ const char* prompt_question(int action)
         default:
             return "";
     }
+}
+
+void set_pause_save_notice(PauseState* state, PauseSaveNotice notice)
+{
+    state->save_notice = notice;
+}
+
+const char* pause_save_notice_text(int notice)
+{
+    return save_notice_texts[clamp_option(notice, PAUSE_SAVE_NOTICE_COUNT)];
 }

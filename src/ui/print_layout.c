@@ -404,6 +404,9 @@ static void print_pause_panel(const PauseState* pause, int rows, int cols)
                            pause_option_label(option),
                            option == (int)pause->selected);
     }
+    print_panel_text(panel, LAYOUT_PAUSE_NOTICE_ROW,
+                     pause_save_notice_text(pause->save_notice));
+    print_panel_text(panel, LAYOUT_PAUSE_SAVE_ROW, LAYOUT_PAUSE_SAVE_HINT);
     print_panel_text(panel, LAYOUT_PAUSE_CHOOSE_ROW, LAYOUT_PAUSE_CHOOSE_HINT);
     print_panel_text(panel, LAYOUT_PAUSE_BACK_ROW, LAYOUT_PAUSE_BACK_HINT);
 }

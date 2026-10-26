@@ -57,11 +57,13 @@
 #define LAYOUT_MENU_H 8
 #define LAYOUT_MENU_W 50
 #define LAYOUT_MENU_TITLE_ROW 1
+#define LAYOUT_MENU_CONTINUE_ROW 2 /* the free row under the title */
 #define LAYOUT_MENU_START_ROW 3
 #define LAYOUT_MENU_STATS_ROW 4
 #define LAYOUT_MENU_THEME_ROW 5
 #define LAYOUT_MENU_EXIT_ROW 6
 #define LAYOUT_MENU_TEXT_COL 2
+#define LAYOUT_MENU_CONTINUE_HINT "Press C to continue the saved game"
 #define LAYOUT_DIFFICULTY_MENU_H 10
 #define LAYOUT_DIFFICULTY_MENU_W LAYOUT_MENU_W
 #define LAYOUT_DIFFICULTY_TITLE_ROW 1
@@ -72,12 +74,15 @@
 #define LAYOUT_PAUSE_MENU_H 9
 #define LAYOUT_PAUSE_MENU_W LAYOUT_MENU_W
 #define LAYOUT_PAUSE_TITLE_ROW 1
+#define LAYOUT_PAUSE_NOTICE_ROW 2 /* the save notice, under the title */
 #define LAYOUT_PAUSE_FIRST_OPTION_ROW 3
+#define LAYOUT_PAUSE_SAVE_ROW 5
 #define LAYOUT_PAUSE_CHOOSE_ROW 6
 #define LAYOUT_PAUSE_BACK_ROW 7
 #define LAYOUT_PAUSE_TITLE "Paused"
 #define LAYOUT_PAUSE_CHOOSE_HINT "UP/DOWN to choose, SPACE or ENTER to select"
 #define LAYOUT_PAUSE_BACK_HINT "Press ESC or P to resume, T for theme"
+#define LAYOUT_PAUSE_SAVE_HINT "Press S to save the game"
 #define LAYOUT_THEME_MENU_W LAYOUT_MENU_W
 #define LAYOUT_THEME_TITLE_ROW 1
 #define LAYOUT_THEME_FIRST_OPTION_ROW 3

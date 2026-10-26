@@ -34,7 +34,8 @@ typedef enum
     PAUSE_MENU_COMMAND_DOWN,
     PAUSE_MENU_COMMAND_SELECT,
     PAUSE_MENU_COMMAND_RESUME,
-    PAUSE_MENU_COMMAND_THEME /* open the theme screen */
+    PAUSE_MENU_COMMAND_THEME, /* open the theme screen */
+    PAUSE_MENU_COMMAND_SAVE
 } PauseMenuCommand;
 
 typedef enum
@@ -47,6 +48,15 @@ typedef enum
     PROMPT_COMMAND_NO
 } PromptCommand;
 
+typedef enum
+{
+    PAUSE_SAVE_NOTICE_NONE,
+    PAUSE_SAVE_NOTICE_SAVED,
+    PAUSE_SAVE_NOTICE_SESSION_ONLY, /* kept for this run, not on disk */
+    PAUSE_SAVE_NOTICE_FAILED,       /* the game could not be saved at all */
+    PAUSE_SAVE_NOTICE_COUNT         /* number of notices, not a notice */
+} PauseSaveNotice;
+
 typedef struct
 {
     PauseScreen screen;
@@ -55,15 +65,18 @@ typedef struct
     GameAction pending;    /* what the prompt asks about; NONE otherwise */
     PauseScreen cancel_to; /* PLAYING or MENU: where No, ESC and the theme
                               screen return */
+    PauseSaveNotice save_notice; /* shown on the pause menu; NONE otherwise */
 } PauseState;
 
-/* Playing, Resume highlighted, prompt answer No, nothing pending (S-1). */
+/* Playing, Resume highlighted, prompt answer No, nothing pending, no save
+ * notice (S-1). */
 void init_pause_state(PauseState* state);
 
 /* True whenever the pause menu or a prompt is shown (S-16). */
 bool is_game_paused(const PauseState* state);
 
-/* Opens the menu with Resume highlighted; ignored unless playing (S-2, S-3). */
+/* Opens the menu with Resume highlighted and no save notice; ignored unless
+ * playing (S-2, S-3). */
 void open_pause_menu(PauseState* state);
 
 /* Shows the theme screen, which returns to where it was opened: the game when
@@ -87,8 +100,10 @@ GameAction request_game_action(PauseState* state, GameAction action,
 /* Applies one pause-menu command: UP and DOWN stop at the ends, RESUME and
  * SELECT on Resume return to the game, SELECT on Abandon returns
  * GAME_ACTION_MAIN_MENU, or opens a prompt when progress is at risk, and THEME
- * opens the theme screen (returning NONE). Ignored
- * unless the menu is shown (S-7..S-11). */
+ * opens the theme screen (returning NONE). SAVE returns GAME_ACTION_SAVE and
+ * changes nothing: the menu stays open on the same option, and the caller
+ * reports the outcome with set_pause_save_notice. Ignored unless the menu is
+ * shown (S-7..S-11). */
 GameAction apply_pause_menu_command(PauseState* state, PauseMenuCommand command,
                                     bool progress_at_risk);
 
@@ -103,8 +118,16 @@ const char* pause_option_label(int option);
 /* "Yes" or "No"; out-of-range values are clamped. */
 const char* prompt_option_label(int option);
 
-/* "Start a new game?" or "Abandon this game?"; "" for GAME_ACTION_NONE or an
- * out-of-range value. */
+/* "Start a new game?" or "Abandon this game?"; "" for GAME_ACTION_NONE,
+ * GAME_ACTION_SAVE or an out-of-range value. */
 const char* prompt_question(int action);
+
+/* Sets the notice shown on the pause menu. It lasts until the menu is opened
+ * again. */
+void set_pause_save_notice(PauseState* state, PauseSaveNotice notice);
+
+/* "", "Game saved.", "Saved for this session only." or "This game cannot be
+ * saved."; out-of-range values are clamped. */
+const char* pause_save_notice_text(int notice);
 
 #endif
