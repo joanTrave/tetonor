@@ -99,6 +99,7 @@ static attr_t monochrome_attr(PaletteRole role)
             return A_DIM | A_UNDERLINE;
         case PALETTE_ROLE_CORRECT:
         case PALETTE_ROLE_WRONG:
+        case PALETTE_ROLE_CONFLICT:
         case PALETTE_ROLE_USED_ONCE:
             return A_BOLD;
         case PALETTE_ROLE_USED_TWICE:

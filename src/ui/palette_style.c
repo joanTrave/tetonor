@@ -51,3 +51,8 @@ bool strip_slot_role(bool editable, SlotUsage usage, PaletteRole* role)
     }
     return false;
 }
+
+PaletteRole group_field_role(bool in_conflict)
+{
+    return in_conflict ? PALETTE_ROLE_CONFLICT : PALETTE_ROLE_ENTERED;
+}

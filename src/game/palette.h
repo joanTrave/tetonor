@@ -31,7 +31,8 @@ typedef enum
     PALETTE_ROLE_USED_TWICE,       /* given strip number holding both uses */
     PALETTE_ROLE_USED_ONCE_TYPED,  /* typed strip number holding one use */
     PALETTE_ROLE_USED_TWICE_TYPED, /* typed strip number holding both uses */
-    PALETTE_ROLE_TEXT, /* menus, frames, labels, hints and given numbers */
+    PALETTE_ROLE_TEXT,     /* menus, frames, labels, hints and given numbers */
+    PALETTE_ROLE_CONFLICT, /* box breaking a rule; message */
     PALETTE_ROLE_COUNT
 } PaletteRole;
 

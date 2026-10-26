@@ -2,6 +2,7 @@
 #define TETONOR_UI_LAYOUT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "../game/game_port.h"
 #include "../game/operand_group.h"
@@ -38,6 +39,10 @@
 #define LAYOUT_UNDO_EMPTY_MESSAGE "Nothing to undo"
 #define LAYOUT_NOTICE_GAP_X                                                    \
     2 /* blank columns between the result and a notice */
+#define LAYOUT_CONFLICT_MARKER '!' /* frames a conflicting group or slot */
+/* printf format: count, then LAYOUT_CONFLICT_MARKER. */
+#define LAYOUT_CONFLICT_FORMAT "Conflicts: %d (marked %c)"
+#define LAYOUT_CONFLICT_NOTICE_SIZE 32 /* bytes, NUL included */
 #define LAYOUT_TIMER_LABEL "Time: "
 #define LAYOUT_TIMER_GAP_X 4 /* blank columns before the timer */
 #define LAYOUT_TIMER_W                                                         \
@@ -167,6 +172,15 @@ LayoutPoint layout_result_message_origin(void);
 /* Row/column of the nothing-to-undo notice: on the result row, right of the
  * longer result text. */
 LayoutPoint layout_undo_notice_origin(void);
+
+/* Row/column of the conflict notice: on the result row, right of the
+ * nothing-to-undo notice. */
+LayoutPoint layout_conflict_notice_origin(void);
+
+/* Writes the conflict notice for count, clamped to
+ * 0..TETONOR_CONFLICT_COUNT_MAX, into text (size bytes, truncated, always
+ * NUL-terminated when size > 0). */
+void layout_format_conflict_notice(int count, char* text, size_t size);
 
 /* Top-left corner of the timer text, right of the first grid row. */
 LayoutPoint layout_timer_origin(void);

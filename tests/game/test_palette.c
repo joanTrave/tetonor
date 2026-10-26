@@ -5,7 +5,7 @@
 #include "../test_harness.h"
 #include "../../src/game/palette.h"
 
-#define TEST_ROLE_COUNT 8
+#define TEST_ROLE_COUNT 9
 #define TEST_BASIC_COLOR_COUNT 8
 #define TEST_GARBAGE_BYTE 0xA5
 #define TEST_FAR_THEME 99
@@ -104,6 +104,37 @@ static void test_init_palette_used_twice_typed_is_bright_green(void)
                          PALETTE_COLOR_BRIGHT_GREEN, PALETTE_COLOR_GREEN));
 }
 
+static void test_init_palette_conflict_is_magenta(void)
+{
+    Palette palette;
+    init_palette(&palette);
+    ASSERT_TRUE(entry_is(&palette.foregrounds[PALETTE_ROLE_CONFLICT],
+                         PALETTE_COLOR_MAGENTA, PALETTE_COLOR_MAGENTA));
+}
+
+static void test_palette_conflict_role_is_appended_last(void)
+{
+    ASSERT_EQ_INT(PALETTE_ROLE_CONFLICT, PALETTE_ROLE_COUNT - 1);
+}
+
+static void test_init_palette_conflict_differs_from_every_other_role(void)
+{
+    Palette palette;
+    init_palette(&palette);
+    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+    {
+        if (role == PALETTE_ROLE_CONFLICT)
+        {
+            continue;
+        }
+        ASSERT_FALSE(
+            entries_equal(&palette.foregrounds[role],
+                          &palette.foregrounds[PALETTE_ROLE_CONFLICT]));
+        ASSERT_TRUE(palette.foregrounds[role].color !=
+                    palette.foregrounds[PALETTE_ROLE_CONFLICT].color);
+    }
+}
+
 static void test_init_palette_background_is_black(void)
 {
     Palette palette;
@@ -164,7 +195,7 @@ static void test_palette_bright_white_is_appended(void)
 static void test_palette_text_role_is_appended(void)
 {
     ASSERT_EQ_INT(PALETTE_ROLE_TEXT, PALETTE_ROLE_USED_TWICE_TYPED + 1);
-    ASSERT_EQ_INT(PALETTE_ROLE_COUNT, PALETTE_ROLE_TEXT + 1);
+    ASSERT_EQ_INT(PALETTE_ROLE_CONFLICT, PALETTE_ROLE_TEXT + 1);
 }
 
 static void test_is_palette_theme_accepts_only_themes(void)
@@ -240,6 +271,78 @@ static void test_init_theme_palette_light_values(void)
                          PALETTE_COLOR_BLACK));
     ASSERT_TRUE(entry_is(&palette.background, PALETTE_COLOR_BRIGHT_WHITE,
                          PALETTE_COLOR_WHITE));
+}
+
+static void test_init_theme_palette_conflict_role_per_theme(void)
+{
+    Palette classic;
+    Palette light;
+    init_theme_palette(&classic, PALETTE_THEME_CLASSIC);
+    init_theme_palette(&light, PALETTE_THEME_LIGHT);
+    ASSERT_TRUE(entry_is(&classic.foregrounds[PALETTE_ROLE_CONFLICT],
+                         PALETTE_COLOR_MAGENTA, PALETTE_COLOR_MAGENTA));
+    ASSERT_TRUE(entry_is(&light.foregrounds[PALETTE_ROLE_CONFLICT],
+                         PALETTE_COLOR_DARK_GREY, PALETTE_COLOR_RED));
+}
+
+/* The one intended overlap: on the Light theme the 8-colour conflict fallback
+ * is red, shared with WRONG (both mean error; the "!" marker tells them
+ * apart). Every other role and every other theme must stay fully distinct. */
+static bool conflict_fallback_overlap_is_intended(int theme, int role)
+{
+    return theme == PALETTE_THEME_LIGHT && role == PALETTE_ROLE_WRONG;
+}
+
+static void test_theme_conflict_differs_from_every_other_role(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        Palette palette;
+        init_theme_palette(&palette, theme);
+        for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+        {
+            if (role == PALETTE_ROLE_CONFLICT)
+            {
+                continue;
+            }
+            ASSERT_TRUE(palette.foregrounds[role].color !=
+                        palette.foregrounds[PALETTE_ROLE_CONFLICT].color);
+            if (!conflict_fallback_overlap_is_intended(theme, role))
+            {
+                ASSERT_TRUE(
+                    palette.foregrounds[role].fallback !=
+                    palette.foregrounds[PALETTE_ROLE_CONFLICT].fallback);
+            }
+        }
+    }
+}
+
+static void test_light_conflict_fallback_is_shared_with_wrong_only(void)
+{
+    Palette palette;
+    init_theme_palette(&palette, PALETTE_THEME_LIGHT);
+    PaletteColor conflict = palette.foregrounds[PALETTE_ROLE_CONFLICT].fallback;
+    ASSERT_EQ_INT(conflict, palette.foregrounds[PALETTE_ROLE_WRONG].fallback);
+    int sharing = 0;
+    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+    {
+        if (palette.foregrounds[role].fallback == conflict)
+        {
+            sharing++;
+        }
+    }
+    /* CONFLICT itself and WRONG, nothing else. */
+    ASSERT_EQ_INT(sharing, 2);
+}
+
+static void test_light_conflict_fallback_is_readable_on_background(void)
+{
+    Palette palette;
+    init_theme_palette(&palette, PALETTE_THEME_LIGHT);
+    PaletteColor conflict = palette.foregrounds[PALETTE_ROLE_CONFLICT].fallback;
+    ASSERT_TRUE(conflict != palette.background.fallback);
+    ASSERT_TRUE(conflict != PALETTE_COLOR_WHITE);
+    ASSERT_TRUE(conflict != PALETTE_COLOR_YELLOW);
 }
 
 static void test_init_theme_palette_out_of_range_is_default(void)
@@ -327,6 +430,9 @@ int main(void)
     RUN_TEST(test_init_palette_used_twice_is_green);
     RUN_TEST(test_init_palette_used_once_typed_is_bright_blue);
     RUN_TEST(test_init_palette_used_twice_typed_is_bright_green);
+    RUN_TEST(test_init_palette_conflict_is_magenta);
+    RUN_TEST(test_palette_conflict_role_is_appended_last);
+    RUN_TEST(test_init_palette_conflict_differs_from_every_other_role);
     RUN_TEST(test_init_palette_background_is_black);
     RUN_TEST(test_init_palette_replaces_previous_contents);
     RUN_TEST(test_init_palette_is_repeatable);
@@ -339,6 +445,10 @@ int main(void)
     RUN_TEST(test_init_theme_palette_classic_equals_init_palette);
     RUN_TEST(test_init_theme_palette_classic_is_todays_look);
     RUN_TEST(test_init_theme_palette_light_values);
+    RUN_TEST(test_init_theme_palette_conflict_role_per_theme);
+    RUN_TEST(test_theme_conflict_differs_from_every_other_role);
+    RUN_TEST(test_light_conflict_fallback_is_shared_with_wrong_only);
+    RUN_TEST(test_light_conflict_fallback_is_readable_on_background);
     RUN_TEST(test_init_theme_palette_out_of_range_is_default);
     RUN_TEST(test_init_theme_palette_replaces_previous_contents);
     RUN_TEST(test_themes_have_different_palettes);

@@ -19,6 +19,9 @@ typedef enum
     GROUP_FIELD_GREATER
 } GroupField;
 
+#define TETONOR_GROUP_FIELD_COUNT                                              \
+    (GROUP_FIELD_GREATER + 1) /* boxes per group */
+
 /* The player's decomposition of one matrix cell. */
 typedef struct
 {

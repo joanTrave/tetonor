@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#include "conflict_check.h"
 #include "number_generation.h"
 #include "operand_group.h"
 #include "slot_usage.h"
@@ -88,41 +89,42 @@ typedef struct
     BoardResult result;
     SlotUsage slot_usages[TETONOR_CELL_COUNT]; /* derived from the strip and
                                                   the groups */
+    BoardConflicts conflicts; /* derived from the strip and the groups */
     MoveHistory history; /* this game's undoable moves; emptied by init_board */
     int move_count; /* moves of this game (see board_move_count); init_board
                        resets it, undo keeps it */
 } Board;
 
-/* Starts a fresh entry session over puzzle. Also fills the slot usages. Empties
- * the move history and zeroes the move count. Acquires
- * nothing: Board is a fixed-size value, so there is no matching release
- * function. */
+/* Starts a fresh entry session over puzzle. Also fills the slot usages
+ * and conflicts. Empties the move history and zeroes the move count. Acquires
+ * nothing: Board is a fixed-size value, so there is no matching
+ * release function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
 
 /* init_board, then slot values, group boxes and result from entries and the
- * move count from move_count; slot_usages are recomputed and the move history
- * stays empty. Requires entries consistent with puzzle (see
+ * move count from move_count; slot usages and conflicts are recomputed and
+ * the move history stays empty. Requires entries consistent with puzzle (see
  * is_saved_game_valid). */
 void restore_board(Board* board, const NumberGeneration* puzzle,
                    const BoardSnapshot* entries, int move_count);
 
 /* Applies one player input. Slot and group focus edit and move; ACTIVATE on
  * the submit control judges the whole answer once every editable slot and
- * every group box is filled. Recomputes slot_usages after every input.
- * Records the entries before every input that changes a slot value or a group
- * box as one undoable move, keeping the latest TETONOR_UNDO_HISTORY_DEPTH, and
- * counts it in move_count.
- * While the board is locked, digits, deletes, operations and ACTIVATE on the
- * submit control change nothing and return BOARD_EVENT_NONE.
- * ACTIVATE on the restart control returns BOARD_EVENT_RESTART and leaves the
- * board unchanged; every other input returns BOARD_EVENT_NONE. */
+ * every group box is filled. Recomputes slot usages and conflicts after every
+ * input. Records the entries before every input that changes a slot value or a
+ * group box as one undoable move, keeping the latest
+ * TETONOR_UNDO_HISTORY_DEPTH, and counts it in move_count. While the board is
+ * locked, digits, deletes, operations and ACTIVATE on the submit control change
+ * nothing and return BOARD_EVENT_NONE. ACTIVATE on the restart control returns
+ * BOARD_EVENT_RESTART and leaves the board unchanged; every other input returns
+ * BOARD_EVENT_NONE. */
 BoardEvent apply_board_input(Board* board, BoardInput input);
 
 /* Reverts the latest move recorded by apply_board_input: slot values, group
- * boxes and result return to what they were just before it, and slot_usages
- * are recomputed. Cursor, group cursor and field, and focus are not touched.
- * Returns false, leaving the board unchanged, when there is no move to undo or
- * the board is locked. */
+ * boxes and result return to what they were just before it, and slot usages and
+ * conflicts are recomputed. Cursor, group cursor and field, and focus are not
+ * touched. Returns false, leaving the board unchanged, when there is no move to
+ * undo or the board is locked. */
 bool undo_board_move(Board* board);
 
 /* True while CORRECT ANSWER is shown: the board then takes only cursor

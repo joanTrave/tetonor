@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../test_harness.h"
+#include "../../src/game/conflict_check.h"
 #include "../../src/game/number_generation.h"
 #include "../../src/game/operand_group.h"
 #include "../../src/ui/layout.h"
@@ -16,6 +17,9 @@
 #define TEST_LAST_INDEX (TETONOR_CELL_COUNT - 1)
 #define TEST_LAST_GRID_INDEX (TETONOR_GRID_SIZE - 1)
 #define TEST_ENLARGE_BUFFER_SIZE 80
+#define TEST_MIDDLE_COUNT 7
+#define TEST_FAR_ABOVE_COUNT 1000
+#define TEST_SMALL_BUFFER_SIZE 5
 
 #define ASSERT_POINT(point, expected_y, expected_x)                            \
     do                                                                         \
@@ -318,6 +322,105 @@ static void test_layout_undo_notice_fits_the_minimum_terminal(void)
     ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
     ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
     ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+}
+
+static void test_layout_conflict_notice_origin_is_right_of_the_undo_notice(void)
+{
+    LayoutPoint result = layout_result_message_origin();
+    LayoutPoint undo   = layout_undo_notice_origin();
+    LayoutPoint origin = layout_conflict_notice_origin();
+    ASSERT_EQ_INT(origin.y, result.y);
+    ASSERT_EQ_INT(origin.x, undo.x + (int)strlen(LAYOUT_UNDO_EMPTY_MESSAGE) +
+                                LAYOUT_NOTICE_GAP_X);
+    ASSERT_POINT(origin, 26, 35);
+}
+
+static void test_layout_format_conflict_notice_text(void)
+{
+    char text[LAYOUT_CONFLICT_NOTICE_SIZE];
+    layout_format_conflict_notice(1, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 1 (marked !)") == 0);
+    layout_format_conflict_notice(TETONOR_CONFLICT_COUNT_MAX, text,
+                                  sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 32 (marked !)") == 0);
+    layout_format_conflict_notice(TEST_MIDDLE_COUNT, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 7 (marked !)") == 0);
+}
+
+static void test_layout_format_conflict_notice_names_the_marker(void)
+{
+    char text[LAYOUT_CONFLICT_NOTICE_SIZE];
+    layout_format_conflict_notice(2, text, sizeof text);
+    ASSERT_TRUE(strchr(text, LAYOUT_CONFLICT_MARKER) != NULL);
+}
+
+static void test_layout_format_conflict_notice_clamps_the_count(void)
+{
+    char text[LAYOUT_CONFLICT_NOTICE_SIZE];
+    layout_format_conflict_notice(-5, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 0 (marked !)") == 0);
+    layout_format_conflict_notice(INT_MIN, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 0 (marked !)") == 0);
+    layout_format_conflict_notice(TETONOR_CONFLICT_COUNT_MAX + 1, text,
+                                  sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 32 (marked !)") == 0);
+    layout_format_conflict_notice(TEST_FAR_ABOVE_COUNT, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 32 (marked !)") == 0);
+    layout_format_conflict_notice(INT_MAX, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conflicts: 32 (marked !)") == 0);
+}
+
+static void test_layout_format_conflict_notice_truncates_and_terminates(void)
+{
+    char text[TEST_SMALL_BUFFER_SIZE];
+    memset(text, 'z', sizeof text);
+    layout_format_conflict_notice(1, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Conf") == 0);
+    char one[1] = {'z'};
+    layout_format_conflict_notice(1, one, sizeof one);
+    ASSERT_EQ_INT(one[0], '\0');
+}
+
+static void test_layout_format_conflict_notice_size_zero_writes_nothing(void)
+{
+    char text[TEST_SMALL_BUFFER_SIZE];
+    memset(text, 'z', sizeof text);
+    layout_format_conflict_notice(1, text, 0);
+    for (size_t i = 0; i < sizeof text; i++)
+    {
+        ASSERT_EQ_INT(text[i], 'z');
+    }
+}
+
+static void test_layout_conflict_notice_fits_the_minimum_terminal(void)
+{
+    char text[LAYOUT_CONFLICT_NOTICE_SIZE];
+    layout_format_conflict_notice(TETONOR_CONFLICT_COUNT_MAX, text,
+                                  sizeof text);
+    LayoutPoint origin = layout_conflict_notice_origin();
+    ASSERT_TRUE((int)strlen(text) < LAYOUT_CONFLICT_NOTICE_SIZE);
+    ASSERT_TRUE(origin.x + (int)strlen(text) <= LAYOUT_MIN_COLS);
+    ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+}
+
+static void test_layout_conflict_notice_does_not_overlap_the_undo_notice(void)
+{
+    LayoutPoint undo   = layout_undo_notice_origin();
+    LayoutPoint origin = layout_conflict_notice_origin();
+    ASSERT_TRUE(origin.x >= undo.x + (int)strlen(LAYOUT_UNDO_EMPTY_MESSAGE) +
+                                LAYOUT_NOTICE_GAP_X);
+}
+
+static void test_layout_conflict_marker_is_not_board_text(void)
+{
+    ASSERT_EQ_INT(LAYOUT_CONFLICT_MARKER, '!');
+    ASSERT_TRUE(LAYOUT_CONFLICT_MARKER > ' ' && LAYOUT_CONFLICT_MARKER < 0x7f);
+    ASSERT_FALSE(LAYOUT_CONFLICT_MARKER >= '0' &&
+                 LAYOUT_CONFLICT_MARKER <= '9');
+    ASSERT_TRUE(LAYOUT_CONFLICT_MARKER != '+');
+    ASSERT_TRUE(LAYOUT_CONFLICT_MARKER != 'x');
 }
 
 static void test_layout_whole_board_fits_the_minimum_terminal(void)
@@ -1046,6 +1149,15 @@ int main(void)
     RUN_TEST(test_layout_undo_notice_origin_is_right_of_the_result_message);
     RUN_TEST(test_layout_undo_notice_does_not_overlap_result_texts);
     RUN_TEST(test_layout_undo_notice_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_conflict_notice_origin_is_right_of_the_undo_notice);
+    RUN_TEST(test_layout_format_conflict_notice_text);
+    RUN_TEST(test_layout_format_conflict_notice_names_the_marker);
+    RUN_TEST(test_layout_format_conflict_notice_clamps_the_count);
+    RUN_TEST(test_layout_format_conflict_notice_truncates_and_terminates);
+    RUN_TEST(test_layout_format_conflict_notice_size_zero_writes_nothing);
+    RUN_TEST(test_layout_conflict_notice_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_conflict_notice_does_not_overlap_the_undo_notice);
+    RUN_TEST(test_layout_conflict_marker_is_not_board_text);
     RUN_TEST(test_layout_whole_board_fits_the_minimum_terminal);
     RUN_TEST(test_layout_minimum_terminal_is_eighty_by_twenty_seven);
     RUN_TEST(test_layout_fits_accepts_the_minimum_terminal);

@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "layout.h"
 #include "../game/game_port.h"
 
@@ -107,6 +109,31 @@ LayoutPoint layout_undo_notice_origin(void)
     LayoutPoint origin = layout_result_message_origin();
     origin.x += LAYOUT_RESULT_MESSAGE_W + LAYOUT_NOTICE_GAP_X;
     return origin;
+}
+
+LayoutPoint layout_conflict_notice_origin(void)
+{
+    LayoutPoint origin = layout_undo_notice_origin();
+    origin.x +=
+        (int)(sizeof LAYOUT_UNDO_EMPTY_MESSAGE - 1) + LAYOUT_NOTICE_GAP_X;
+    return origin;
+}
+
+void layout_format_conflict_notice(int count, char* text, size_t size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    if (count < 0)
+    {
+        count = 0;
+    }
+    if (count > TETONOR_CONFLICT_COUNT_MAX)
+    {
+        count = TETONOR_CONFLICT_COUNT_MAX;
+    }
+    snprintf(text, size, LAYOUT_CONFLICT_FORMAT, count, LAYOUT_CONFLICT_MARKER);
 }
 
 LayoutPoint layout_timer_origin(void)
