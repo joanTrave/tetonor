@@ -1,27 +1,72 @@
 #include "palette.h"
 
-static void set_entry(PaletteEntry* entry, PaletteColor color,
-                      PaletteColor fallback)
+#define PALETTE_ENTRY(preferred, basic) {(preferred), (basic)}
+
+/* The single place for theme data. */
+static const Palette theme_palettes[PALETTE_THEME_COUNT] = {
+    [PALETTE_THEME_CLASSIC] =
+        {
+            .foregrounds =
+                {
+                    [PALETTE_ROLE_ENTERED] = PALETTE_ENTRY(
+                        PALETTE_COLOR_DARK_GREY, PALETTE_COLOR_YELLOW),
+                    [PALETTE_ROLE_CORRECT] =
+                        PALETTE_ENTRY(PALETTE_COLOR_GREEN, PALETTE_COLOR_GREEN),
+                    [PALETTE_ROLE_WRONG] =
+                        PALETTE_ENTRY(PALETTE_COLOR_RED, PALETTE_COLOR_RED),
+                    [PALETTE_ROLE_USED_ONCE] =
+                        PALETTE_ENTRY(PALETTE_COLOR_BLUE, PALETTE_COLOR_BLUE),
+                    [PALETTE_ROLE_USED_TWICE] =
+                        PALETTE_ENTRY(PALETTE_COLOR_GREEN, PALETTE_COLOR_GREEN),
+                    [PALETTE_ROLE_USED_ONCE_TYPED] = PALETTE_ENTRY(
+                        PALETTE_COLOR_BRIGHT_BLUE, PALETTE_COLOR_BLUE),
+                    [PALETTE_ROLE_USED_TWICE_TYPED] = PALETTE_ENTRY(
+                        PALETTE_COLOR_BRIGHT_GREEN, PALETTE_COLOR_GREEN),
+                    [PALETTE_ROLE_TEXT] =
+                        PALETTE_ENTRY(PALETTE_COLOR_WHITE, PALETTE_COLOR_WHITE),
+                },
+            .background =
+                PALETTE_ENTRY(PALETTE_COLOR_BLACK, PALETTE_COLOR_BLACK),
+        },
+    [PALETTE_THEME_LIGHT] =
+        {
+            .foregrounds =
+                {
+                    [PALETTE_ROLE_ENTERED] = PALETTE_ENTRY(
+                        PALETTE_COLOR_MAGENTA, PALETTE_COLOR_MAGENTA),
+                    [PALETTE_ROLE_CORRECT] =
+                        PALETTE_ENTRY(PALETTE_COLOR_GREEN, PALETTE_COLOR_GREEN),
+                    [PALETTE_ROLE_WRONG] =
+                        PALETTE_ENTRY(PALETTE_COLOR_RED, PALETTE_COLOR_RED),
+                    [PALETTE_ROLE_USED_ONCE] =
+                        PALETTE_ENTRY(PALETTE_COLOR_BLUE, PALETTE_COLOR_BLUE),
+                    [PALETTE_ROLE_USED_TWICE] =
+                        PALETTE_ENTRY(PALETTE_COLOR_GREEN, PALETTE_COLOR_GREEN),
+                    [PALETTE_ROLE_USED_ONCE_TYPED] = PALETTE_ENTRY(
+                        PALETTE_COLOR_BRIGHT_BLUE, PALETTE_COLOR_BLUE),
+                    [PALETTE_ROLE_USED_TWICE_TYPED] =
+                        PALETTE_ENTRY(PALETTE_COLOR_CYAN, PALETTE_COLOR_CYAN),
+                    [PALETTE_ROLE_TEXT] =
+                        PALETTE_ENTRY(PALETTE_COLOR_BLACK, PALETTE_COLOR_BLACK),
+                },
+            .background =
+                PALETTE_ENTRY(PALETTE_COLOR_BRIGHT_WHITE, PALETTE_COLOR_WHITE),
+        },
+};
+
+bool is_palette_theme(int theme)
 {
-    entry->color    = color;
-    entry->fallback = fallback;
+    return theme >= PALETTE_THEME_CLASSIC && theme < PALETTE_THEME_COUNT;
+}
+
+void init_theme_palette(Palette* palette, int theme)
+{
+    *palette =
+        theme_palettes[is_palette_theme(theme) ? theme
+                                               : TETONOR_DEFAULT_PALETTE_THEME];
 }
 
 void init_palette(Palette* palette)
 {
-    PaletteEntry* roles = palette->foregrounds;
-    set_entry(&roles[PALETTE_ROLE_ENTERED], PALETTE_COLOR_DARK_GREY,
-              PALETTE_COLOR_YELLOW);
-    set_entry(&roles[PALETTE_ROLE_CORRECT], PALETTE_COLOR_GREEN,
-              PALETTE_COLOR_GREEN);
-    set_entry(&roles[PALETTE_ROLE_WRONG], PALETTE_COLOR_RED, PALETTE_COLOR_RED);
-    set_entry(&roles[PALETTE_ROLE_USED_ONCE], PALETTE_COLOR_BLUE,
-              PALETTE_COLOR_BLUE);
-    set_entry(&roles[PALETTE_ROLE_USED_TWICE], PALETTE_COLOR_GREEN,
-              PALETTE_COLOR_GREEN);
-    set_entry(&roles[PALETTE_ROLE_USED_ONCE_TYPED], PALETTE_COLOR_BRIGHT_BLUE,
-              PALETTE_COLOR_BLUE);
-    set_entry(&roles[PALETTE_ROLE_USED_TWICE_TYPED], PALETTE_COLOR_BRIGHT_GREEN,
-              PALETTE_COLOR_GREEN);
-    set_entry(&palette->background, PALETTE_COLOR_BLACK, PALETTE_COLOR_BLACK);
+    init_theme_palette(palette, TETONOR_DEFAULT_PALETTE_THEME);
 }

@@ -10,9 +10,18 @@
  * function. */
 void init_styles(void);
 
-/* Defines one colour pair per palette role. Call once per play session, after
- * init_styles and before the first draw. */
+/* Defines one colour pair per palette role and paints the screen background
+ * with the text colours. Call after init_styles and whenever the theme
+ * changes; the next refresh repaints everything. */
 void apply_palette_styles(const Palette* palette);
+
+/* apply_palette_styles for theme's palette (the default for a value that is
+ * not a theme). */
+void apply_theme_styles(int theme);
+
+/* Gives win the text colours and background of the current theme. Call on
+ * every window right after creating it. */
+void apply_window_style(WINDOW* win);
 
 /* Curses attributes for role: the role's colour pair (bright for the typed
  * used roles) when colour is available, otherwise a monochrome fallback. */

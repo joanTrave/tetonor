@@ -488,6 +488,266 @@ static void test_pause_labels_and_questions(void)
     ASSERT_TRUE(strcmp(prompt_question(TEST_ABOVE_RANGE), "") == 0);
 }
 
+static void open_theme_from_game(PauseState* state)
+{
+    init_pause_state(state);
+    open_theme_screen(state);
+}
+
+static void open_theme_from_menu(PauseState* state)
+{
+    open_menu(state);
+    apply_pause_menu_command(state, PAUSE_MENU_COMMAND_THEME, false);
+}
+
+static void test_open_theme_screen_from_game_returns_to_game(void)
+{
+    PauseState state;
+    init_pause_state(&state);
+    open_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_THEME);
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_PLAYING);
+    ASSERT_TRUE(is_theme_screen_shown(&state));
+    ASSERT_TRUE(is_game_paused(&state));
+}
+
+static void test_open_theme_screen_from_menu_returns_to_menu(void)
+{
+    PauseState state;
+    open_menu(&state);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_DOWN, false);
+    open_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_THEME);
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.selected, PAUSE_OPTION_ABANDON);
+    ASSERT_TRUE(is_theme_screen_shown(&state));
+}
+
+static void test_open_theme_screen_ignored_during_a_prompt(void)
+{
+    PauseState state;
+    open_prompt_from_game(&state, GAME_ACTION_NEW_GAME);
+    PauseState before = state;
+    open_theme_screen(&state);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+
+    open_prompt_from_abandon(&state);
+    before = state;
+    open_theme_screen(&state);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_PROMPT);
+}
+
+static void test_open_theme_screen_ignored_while_already_open(void)
+{
+    PauseState state;
+    open_theme_from_menu(&state);
+    PauseState before = state;
+    open_theme_screen(&state);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_MENU);
+
+    open_theme_from_game(&state);
+    before = state;
+    open_theme_screen(&state);
+    ASSERT_TRUE(states_equal(&state, &before));
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_PLAYING);
+}
+
+static void test_close_theme_screen_returns_to_game_and_resets(void)
+{
+    PauseState state;
+    open_theme_from_game(&state);
+    close_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+    ASSERT_FALSE(is_game_paused(&state));
+}
+
+static void test_close_theme_screen_returns_to_menu_and_resets(void)
+{
+    PauseState state;
+    open_theme_from_menu(&state);
+    close_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(state.selected, PAUSE_OPTION_RESUME);
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+    ASSERT_TRUE(is_game_paused(&state));
+}
+
+static void test_close_theme_screen_keeps_the_selected_pause_option(void)
+{
+    PauseState state;
+    open_menu(&state);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_DOWN, false);
+    apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_THEME, false);
+    close_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(state.selected, PAUSE_OPTION_ABANDON);
+}
+
+static void test_close_theme_screen_does_nothing_when_not_shown(void)
+{
+    PauseState playing;
+    init_pause_state(&playing);
+    PauseState before = playing;
+    close_theme_screen(&playing);
+    ASSERT_TRUE(states_equal(&playing, &before));
+
+    PauseState menu;
+    open_menu(&menu);
+    before = menu;
+    close_theme_screen(&menu);
+    ASSERT_TRUE(states_equal(&menu, &before));
+
+    PauseState prompt;
+    open_prompt_from_abandon(&prompt);
+    before = prompt;
+    close_theme_screen(&prompt);
+    ASSERT_TRUE(states_equal(&prompt, &before));
+}
+
+static void test_close_theme_screen_twice_does_not_leave_the_menu(void)
+{
+    PauseState state;
+    open_theme_from_menu(&state);
+    close_theme_screen(&state);
+    close_theme_screen(&state);
+    ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_MENU);
+}
+
+static void test_apply_pause_menu_command_theme_opens_the_theme_screen(void)
+{
+    for (int risk = 0; risk <= 1; risk++)
+    {
+        PauseState state;
+        open_menu(&state);
+        GameAction action =
+            apply_pause_menu_command(&state, PAUSE_MENU_COMMAND_THEME, risk);
+        ASSERT_EQ_INT(action, GAME_ACTION_NONE);
+        ASSERT_EQ_INT(state.screen, PAUSE_SCREEN_THEME);
+        ASSERT_EQ_INT(state.cancel_to, PAUSE_SCREEN_MENU);
+        ASSERT_EQ_INT(state.pending, GAME_ACTION_NONE);
+    }
+}
+
+static void test_apply_pause_menu_command_theme_ignored_outside_menu(void)
+{
+    PauseState playing;
+    init_pause_state(&playing);
+    PauseState before = playing;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&playing, PAUSE_MENU_COMMAND_THEME, false),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&playing, &before));
+
+    PauseState prompt;
+    open_prompt_from_abandon(&prompt);
+    before = prompt;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&prompt, PAUSE_MENU_COMMAND_THEME, true),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&prompt, &before));
+
+    PauseState theme;
+    open_theme_from_menu(&theme);
+    before = theme;
+    ASSERT_EQ_INT(
+        apply_pause_menu_command(&theme, PAUSE_MENU_COMMAND_THEME, false),
+        GAME_ACTION_NONE);
+    ASSERT_TRUE(states_equal(&theme, &before));
+}
+
+static void test_theme_screen_ignores_pause_menu_commands(void)
+{
+    for (size_t command = 0; command < TEST_PAUSE_COMMAND_COUNT; command++)
+    {
+        for (int risk = 0; risk <= 1; risk++)
+        {
+            PauseState from_game;
+            open_theme_from_game(&from_game);
+            PauseState before = from_game;
+            ASSERT_EQ_INT(apply_pause_menu_command(
+                              &from_game, all_pause_commands[command], risk),
+                          GAME_ACTION_NONE);
+            ASSERT_TRUE(states_equal(&from_game, &before));
+
+            PauseState from_menu;
+            open_theme_from_menu(&from_menu);
+            before = from_menu;
+            ASSERT_EQ_INT(apply_pause_menu_command(
+                              &from_menu, all_pause_commands[command], risk),
+                          GAME_ACTION_NONE);
+            ASSERT_TRUE(states_equal(&from_menu, &before));
+        }
+    }
+}
+
+static void test_theme_screen_ignores_prompt_commands(void)
+{
+    for (size_t command = 0; command < TEST_PROMPT_COMMAND_COUNT; command++)
+    {
+        PauseState state;
+        open_theme_from_menu(&state);
+        PauseState before = state;
+        ASSERT_EQ_INT(
+            apply_prompt_command(&state, all_prompt_commands[command]),
+            GAME_ACTION_NONE);
+        ASSERT_TRUE(states_equal(&state, &before));
+    }
+}
+
+static void test_theme_screen_ignores_game_action_requests(void)
+{
+    for (int risk = 0; risk <= 1; risk++)
+    {
+        PauseState state;
+        open_theme_from_game(&state);
+        PauseState before = state;
+        ASSERT_EQ_INT(request_game_action(&state, GAME_ACTION_NEW_GAME, risk),
+                      GAME_ACTION_NONE);
+        ASSERT_EQ_INT(request_game_action(&state, GAME_ACTION_MAIN_MENU, risk),
+                      GAME_ACTION_NONE);
+        ASSERT_TRUE(states_equal(&state, &before));
+    }
+}
+
+static void test_theme_screen_ignores_open_pause_menu(void)
+{
+    PauseState state;
+    open_theme_from_game(&state);
+    PauseState before = state;
+    open_pause_menu(&state);
+    ASSERT_TRUE(states_equal(&state, &before));
+}
+
+static void test_is_theme_screen_shown_only_on_the_theme_screen(void)
+{
+    PauseState state;
+    init_pause_state(&state);
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+    open_pause_menu(&state);
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+    state.screen = PAUSE_SCREEN_PROMPT;
+    ASSERT_FALSE(is_theme_screen_shown(&state));
+    state.screen = PAUSE_SCREEN_THEME;
+    ASSERT_TRUE(is_theme_screen_shown(&state));
+}
+
+static void test_theme_values_are_appended(void)
+{
+    ASSERT_EQ_INT(PAUSE_SCREEN_PLAYING, 0);
+    ASSERT_EQ_INT(PAUSE_SCREEN_MENU, 1);
+    ASSERT_EQ_INT(PAUSE_SCREEN_PROMPT, 2);
+    ASSERT_EQ_INT(PAUSE_SCREEN_THEME, 3);
+    ASSERT_EQ_INT(PAUSE_MENU_COMMAND_RESUME, 4);
+    ASSERT_EQ_INT(PAUSE_MENU_COMMAND_THEME, 5);
+    ASSERT_EQ_INT(PAUSE_OPTION_COUNT, 2);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_pause_state_is_playing);
@@ -517,5 +777,22 @@ int main(void)
     RUN_TEST(test_prompt_reopens_with_no_selected);
     RUN_TEST(test_pause_state_never_returns_an_action_while_paused);
     RUN_TEST(test_pause_labels_and_questions);
+    RUN_TEST(test_open_theme_screen_from_game_returns_to_game);
+    RUN_TEST(test_open_theme_screen_from_menu_returns_to_menu);
+    RUN_TEST(test_open_theme_screen_ignored_during_a_prompt);
+    RUN_TEST(test_open_theme_screen_ignored_while_already_open);
+    RUN_TEST(test_close_theme_screen_returns_to_game_and_resets);
+    RUN_TEST(test_close_theme_screen_returns_to_menu_and_resets);
+    RUN_TEST(test_close_theme_screen_keeps_the_selected_pause_option);
+    RUN_TEST(test_close_theme_screen_does_nothing_when_not_shown);
+    RUN_TEST(test_close_theme_screen_twice_does_not_leave_the_menu);
+    RUN_TEST(test_apply_pause_menu_command_theme_opens_the_theme_screen);
+    RUN_TEST(test_apply_pause_menu_command_theme_ignored_outside_menu);
+    RUN_TEST(test_theme_screen_ignores_pause_menu_commands);
+    RUN_TEST(test_theme_screen_ignores_prompt_commands);
+    RUN_TEST(test_theme_screen_ignores_game_action_requests);
+    RUN_TEST(test_theme_screen_ignores_open_pause_menu);
+    RUN_TEST(test_is_theme_screen_shown_only_on_the_theme_screen);
+    RUN_TEST(test_theme_values_are_appended);
     return test_harness_result();
 }

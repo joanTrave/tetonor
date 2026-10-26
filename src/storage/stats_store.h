@@ -5,8 +5,9 @@
 #include <stdint.h>
 
 #include "../game/statistics.h"
+#include "text_file.h"
 
-#define TETONOR_STATS_PATH_MAX 1024 /* longest stats file path, with '\0' */
+#define TETONOR_STATS_PATH_MAX TETONOR_TEXT_FILE_PATH_MAX
 
 typedef enum
 {

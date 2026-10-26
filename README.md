@@ -117,7 +117,7 @@ make format-check   # clang-format --dry-run --Werror on src/ and tests/
 ./tetonor
 ```
 
-SPACE or ENTER on the main menu opens the difficulty screen: UP/DOWN choose Easy, Medium (pre-selected) or Hard, SPACE or ENTER starts the game, ESC goes back to the main menu. ESC during a game returns to the main menu at once, without asking; ESC on the main menu quits. `S` (or `s`) on the main menu opens the statistics screen, and ESC goes back to the main menu. Each number of the matrix has three boxes under it: the smaller number, an operation and the greater number. Arrows move between all boxes: LEFT/RIGHT inside a matrix row, UP/DOWN between rows. DOWN from the bottom row goes to the available row, UP from it goes back to the boxes, and DOWN again goes to the CONFIRM button; UP or LEFT return from it. DOWN from CONFIRM goes to the RESTART button, UP returns to CONFIRM; ENTER or SPACE on RESTART starts a brand new game at once (no confirmation). Digits (main row, or numpad with NumLock on) type a number from 0 to 29, `+` sets addition, `x`, `X` or `*` set multiplication (always shown as `x`, also from the numpad), and BACKSPACE deletes. `U` (or `u`) undoes the last edit: a typed digit, a deleted digit or an operation, up to the last 20, one per press. It restores the boxes, their colours and the result as they were before that edit, and the cursor stays where it is. With nothing left to undo, "Nothing to undo" appears beside the result line until the next key. A new game starts with nothing to undo. ENTER or SPACE on CONFIRM judges the whole board and shows CORRECT ANSWER or WRONG ANSWER (nothing happens while a box is still empty): every pair of numbers must be used once added and once multiplied, and any valid solution wins. Solving the puzzle opens the victory screen (see below). ENTER on a box does nothing. Editing a box clears a WRONG ANSWER; once the answer is CORRECT the board is locked and replaced by the victory screen, where only its own keys work. A number in the available row turns blue when one operand box uses it and green once it is used in both an addition and a multiplication; numbers you typed use bright blue and bright green instead (on terminals with at least 16 colours); with several equal numbers, each box is coloured on its own. The terminal must be at least 80x27. On Windows run it in a real console such as
+SPACE or ENTER on the main menu opens the difficulty screen: UP/DOWN choose Easy, Medium (pre-selected) or Hard, SPACE or ENTER starts the game, ESC goes back to the main menu. ESC during a game returns to the main menu at once, without asking; ESC on the main menu quits. `S` (or `s`) on the main menu opens the statistics screen, and ESC goes back to the main menu. `T` (or `t`) opens the theme screen (see Themes). Each number of the matrix has three boxes under it: the smaller number, an operation and the greater number. Arrows move between all boxes: LEFT/RIGHT inside a matrix row, UP/DOWN between rows. DOWN from the bottom row goes to the available row, UP from it goes back to the boxes, and DOWN again goes to the CONFIRM button; UP or LEFT return from it. DOWN from CONFIRM goes to the RESTART button, UP returns to CONFIRM; ENTER or SPACE on RESTART starts a brand new game at once (no confirmation). Digits (main row, or numpad with NumLock on) type a number from 0 to 29, `+` sets addition, `x`, `X` or `*` set multiplication (always shown as `x`, also from the numpad), and BACKSPACE deletes. `U` (or `u`) undoes the last edit: a typed digit, a deleted digit or an operation, up to the last 20, one per press. It restores the boxes, their colours and the result as they were before that edit, and the cursor stays where it is. With nothing left to undo, "Nothing to undo" appears beside the result line until the next key. A new game starts with nothing to undo. ENTER or SPACE on CONFIRM judges the whole board and shows CORRECT ANSWER or WRONG ANSWER (nothing happens while a box is still empty): every pair of numbers must be used once added and once multiplied, and any valid solution wins. Solving the puzzle opens the victory screen (see below). ENTER on a box does nothing. Editing a box clears a WRONG ANSWER; once the answer is CORRECT the board is locked and replaced by the victory screen, where only its own keys work. A number in the available row turns blue when one operand box uses it and green once it is used in both an addition and a multiplication; numbers you typed use bright blue and bright green instead (on terminals with at least 16 colours); with several equal numbers, each box is coloured on its own. The terminal must be at least 80x27. On Windows run it in a real console such as
 Windows Terminal or `cmd`/PowerShell, not in mintty (the default MSYS2 terminal), and put
 `C:\msys64\ucrt64\bin` on `PATH` for the runtime DLLs (or build with `make LDFLAGS=-static`).
 
@@ -131,6 +131,7 @@ A help area at the bottom of the game screen, left of the RESTART button, lists 
 | `N` | New game at the same difficulty (fresh board, empty undo history, timer at zero) |
 | `M` | Back to the main menu |
 | `U` | Undo the last edit |
+| `T` | Choose a theme (see Themes) |
 | ESC | Leave the game at once, without asking |
 
 While the game is paused the board is hidden and the timer is frozen at the value it had; time spent paused is not counted, however long the pause lasts. No key changes the board and CONFIRM cannot happen while paused. The pause menu offers Resume and Abandon: UP/DOWN choose, SPACE or ENTER select, ESC or `P` resume, and the game continues exactly as it was (boxes, cursor, undo history and result).
@@ -151,6 +152,14 @@ A move is an edit that changes a box: typing or deleting a digit, or setting or 
 
 The screen offers New game (a fresh game at the same difficulty) and Main menu: UP/DOWN choose, SPACE or ENTER select, `N` starts a new game, `M` or ESC goes to the main menu. Neither action asks for confirmation. Any other key does nothing.
 
+### Themes
+
+Two colour themes are available: Classic (the default, the dark look the game always had) and Light (black text on a light background, with colours chosen to stay readable on it). A theme covers the whole game: the board, every coloured number state, the menus, the other screens and the background.
+
+Press `T` (or `t`) to choose a theme from the main menu, during a game, or on the pause menu. The theme screen lists the themes with the one in use marked "(current)": UP/DOWN move, SPACE or ENTER apply the highlighted theme at once (no restart), ESC or `T` go back without changing anything. During a game the board is hidden while the theme screen is open and shown again, redrawn in the chosen theme, when it closes. Choosing a theme changes nothing but the colours: the numbers you entered, the undo history, the result and the statistics stay as they were. The timer is paused while the theme screen is open, like in the pause menu, so choosing a theme costs no game time.
+
+On terminals with only 8 colours the themes use the closest basic colours, and without colour support both themes look the same (plain text with the usual bold and underline cues).
+
 ### Timer and statistics
 
 A timer beside the board (`Time: MM:SS`, or `H:MM:SS` from one hour, capped at `99:59:59`) counts the game time from the moment the game starts, also while you are not pressing keys. It stops when the puzzle is solved; that game is recorded once and the victory screen shows the same time. RESTART starts a new game and the timer starts again at zero. Time spent paused is not counted. Leaving a game (ESC, `M` or Abandon), or quitting before CORRECT ANSWER, records nothing.
@@ -168,6 +177,18 @@ Statistics are saved after every completed game and loaded when the game starts.
 | macOS | `~/Library/Application Support/Tetonor/statistics.txt` |
 
 It is a small text file that starts with `TETONOR-STATS 1`. A missing file means empty statistics; an empty, truncated, edited or otherwise damaged file is ignored and replaced by the next completed game (no backup is kept). If the folder cannot be created or written, the game still runs and keeps its statistics for the session, but nothing is saved. Delete the file to reset the statistics.
+
+### Configuration file
+
+The chosen theme is saved when you choose it and loaded when the game starts. The file is `config.txt`, in the same per-user folder as `statistics.txt`:
+
+| OS | Path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Tetonor\config.txt` |
+| Linux | `~/.local/share/tetonor/config.txt` |
+| macOS | `~/Library/Application Support/Tetonor/config.txt` |
+
+It is a small text file with two lines, `TETONOR-CONFIG 1` and `theme classic` (or `theme light`). A missing, empty, damaged or unknown file starts the game in the Classic theme, silently; the next theme choice replaces it. If the folder or the file cannot be written, the game still runs and the chosen theme applies for the session, but is not remembered. Delete the file to reset the theme to Classic.
 
 ### Difficulty
 

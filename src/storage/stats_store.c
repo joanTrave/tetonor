@@ -1,71 +1,32 @@
-#include <stdio.h>
 #include <string.h>
 
 #include "stats_store.h"
 
-#define STATS_TMP_SUFFIX ".tmp"
-
 StatsLoadResult load_statistics_file(const char* path, Statistics* statistics)
 {
     init_statistics(statistics);
-    FILE* file = fopen(path, "rb");
-    if (file == NULL)
-    {
-        return STATS_LOAD_MISSING;
-    }
     /* One byte more than the maximum tells an oversized file from a full one.
      */
     char text[TETONOR_STATS_TEXT_MAX + 1];
-    size_t length = fread(text, 1, sizeof text, file);
-    bool failed   = ferror(file) != 0;
-    fclose(file);
-    if (failed || length > TETONOR_STATS_TEXT_MAX ||
-        !parse_statistics(text, length, statistics))
+    size_t length = 0;
+    switch (read_text_file(path, text, sizeof text, &length))
     {
-        return STATS_LOAD_CORRUPTED;
+        case TEXT_FILE_READ_OK:
+            break;
+        case TEXT_FILE_READ_MISSING:
+            return STATS_LOAD_MISSING;
+        case TEXT_FILE_READ_FAILED:
+            return STATS_LOAD_CORRUPTED;
     }
-    return STATS_LOAD_LOADED;
-}
-
-static bool write_text_file(const char* path, const char* text)
-{
-    FILE* file = fopen(path, "wb");
-    if (file == NULL)
-    {
-        return false;
-    }
-    size_t length  = strlen(text);
-    size_t written = fwrite(text, 1, length, file);
-    return fclose(file) == 0 && written == length;
-}
-
-/* rename() replaces an existing file on POSIX but fails on Windows, so a
- * failed first attempt removes the old file and tries once more. */
-static bool replace_file(const char* temporary, const char* path)
-{
-    return rename(temporary, path) == 0 ||
-           (remove(path) == 0 && rename(temporary, path) == 0);
+    return parse_statistics(text, length, statistics) ? STATS_LOAD_LOADED
+                                                      : STATS_LOAD_CORRUPTED;
 }
 
 bool save_statistics_file(const char* path, const Statistics* statistics)
 {
-    if (strlen(path) >= TETONOR_STATS_PATH_MAX)
-    {
-        return false;
-    }
     char text[TETONOR_STATS_TEXT_MAX + 1];
-    char temporary[TETONOR_STATS_PATH_MAX + sizeof STATS_TMP_SUFFIX];
-    snprintf(temporary, sizeof temporary, "%s" STATS_TMP_SUFFIX, path);
-    if (!serialize_statistics(statistics, text, sizeof text))
-    {
-        return false;
-    }
-    if (!write_text_file(temporary, text) || !replace_file(temporary, path))
-    {
-        remove(temporary);
-        return false;
-    }
-    return true;
+    return serialize_statistics(statistics, text, sizeof text) &&
+           write_text_file_atomic(path, text);
 }
 
 StatsLoadResult init_stats_store(StatsStore* store, const char* path)

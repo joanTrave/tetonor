@@ -11,6 +11,8 @@
 #define TEST_VERY_MANY_COLORS 768
 #define TEST_STRIP_ROLE_COUNT 5
 #define TEST_USED_STATE_COUNT 4
+#define TEST_THEME_COUNT_LEVELS 3
+#define TEST_THEME_ROLE_COUNT 6
 
 static const int fixture_color_counts[TEST_COUNT_LEVELS] = {
     TETONOR_BASIC_COLOR_COUNT, TETONOR_16_COLOR_COUNT, TEST_MANY_COLORS,
@@ -19,6 +21,12 @@ static const PaletteColor fixture_basic_colors[TEST_BASIC_COLOR_COUNT] = {
     PALETTE_COLOR_BLACK,  PALETTE_COLOR_RED,  PALETTE_COLOR_GREEN,
     PALETTE_COLOR_YELLOW, PALETTE_COLOR_BLUE, PALETTE_COLOR_MAGENTA,
     PALETTE_COLOR_CYAN,   PALETTE_COLOR_WHITE};
+static const int fixture_theme_color_counts[TEST_THEME_COUNT_LEVELS] = {
+    TETONOR_BASIC_COLOR_COUNT, TETONOR_16_COLOR_COUNT, TEST_MANY_COLORS};
+static const PaletteRole fixture_theme_roles[TEST_THEME_ROLE_COUNT] = {
+    PALETTE_ROLE_TEXT,       PALETTE_ROLE_ENTERED,
+    PALETTE_ROLE_USED_ONCE,  PALETTE_ROLE_USED_ONCE_TYPED,
+    PALETTE_ROLE_USED_TWICE, PALETTE_ROLE_USED_TWICE_TYPED};
 static const PaletteRole fixture_strip_roles[TEST_STRIP_ROLE_COUNT] = {
     PALETTE_ROLE_ENTERED, PALETTE_ROLE_USED_ONCE, PALETTE_ROLE_USED_TWICE,
     PALETTE_ROLE_USED_ONCE_TYPED, PALETTE_ROLE_USED_TWICE_TYPED};
@@ -34,6 +42,20 @@ static PaletteColor resolve_default(PaletteRole role, int color_count)
     Palette palette;
     init_palette(&palette);
     return resolve_palette_color(palette.foregrounds[role], color_count);
+}
+
+static PaletteColor resolve_theme(int theme, PaletteRole role, int color_count)
+{
+    Palette palette;
+    init_theme_palette(&palette, theme);
+    return resolve_palette_color(palette.foregrounds[role], color_count);
+}
+
+static PaletteColor resolve_theme_background(int theme, int color_count)
+{
+    Palette palette;
+    init_theme_palette(&palette, theme);
+    return resolve_palette_color(palette.background, color_count);
 }
 
 static bool is_given_typed_pair(PaletteRole first, PaletteRole second)
@@ -314,6 +336,148 @@ static void test_strip_slot_role_used_states_never_share_a_role(void)
     }
 }
 
+static void test_resolve_palette_color_bright_white_needs_sixteen_colors(void)
+{
+    PaletteEntry entry =
+        make_entry(PALETTE_COLOR_BRIGHT_WHITE, PALETTE_COLOR_WHITE);
+    ASSERT_EQ_INT(resolve_palette_color(entry, TETONOR_BASIC_COLOR_COUNT),
+                  PALETTE_COLOR_WHITE);
+    ASSERT_EQ_INT(resolve_palette_color(entry, TEST_BELOW_16_COUNT),
+                  PALETTE_COLOR_WHITE);
+    ASSERT_EQ_INT(resolve_palette_color(entry, TETONOR_16_COLOR_COUNT),
+                  PALETTE_COLOR_BRIGHT_WHITE);
+    ASSERT_EQ_INT(resolve_palette_color(entry, TEST_MANY_COLORS),
+                  PALETTE_COLOR_BRIGHT_WHITE);
+    ASSERT_EQ_INT(resolve_palette_color(entry, TEST_VERY_MANY_COLORS),
+                  PALETTE_COLOR_BRIGHT_WHITE);
+}
+
+static void test_default_text_is_white_at_every_count(void)
+{
+    for (int n = 0; n < TEST_COUNT_LEVELS; n++)
+    {
+        ASSERT_EQ_INT(
+            resolve_default(PALETTE_ROLE_TEXT, fixture_color_counts[n]),
+            PALETTE_COLOR_WHITE);
+    }
+}
+
+static void test_theme_roles_differ_from_background_when_resolved(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int n = 0; n < TEST_THEME_COUNT_LEVELS; n++)
+        {
+            int count               = fixture_theme_color_counts[n];
+            PaletteColor background = resolve_theme_background(theme, count);
+            for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+            {
+                ASSERT_TRUE(resolve_theme(theme, (PaletteRole)role, count) !=
+                            background);
+            }
+        }
+    }
+}
+
+static void test_theme_strip_roles_are_distinguishable_when_resolved(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int n = 0; n < TEST_THEME_COUNT_LEVELS; n++)
+        {
+            int count = fixture_theme_color_counts[n];
+            for (int a = 0; a < TEST_THEME_ROLE_COUNT; a++)
+            {
+                for (int b = a + 1; b < TEST_THEME_ROLE_COUNT; b++)
+                {
+                    if (is_given_typed_pair(fixture_theme_roles[a],
+                                            fixture_theme_roles[b]) &&
+                        count < TETONOR_16_COLOR_COUNT)
+                    {
+                        continue;
+                    }
+                    ASSERT_TRUE(
+                        resolve_theme(theme, fixture_theme_roles[a], count) !=
+                        resolve_theme(theme, fixture_theme_roles[b], count));
+                }
+            }
+        }
+    }
+}
+
+static void test_theme_strip_roles_all_differ_at_sixteen(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int n = 1; n < TEST_THEME_COUNT_LEVELS; n++)
+        {
+            int count = fixture_theme_color_counts[n];
+            for (int a = 0; a < TEST_THEME_ROLE_COUNT; a++)
+            {
+                for (int b = a + 1; b < TEST_THEME_ROLE_COUNT; b++)
+                {
+                    ASSERT_TRUE(
+                        resolve_theme(theme, fixture_theme_roles[a], count) !=
+                        resolve_theme(theme, fixture_theme_roles[b], count));
+                }
+            }
+        }
+    }
+}
+
+static void test_theme_result_roles_are_distinguishable(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int n = 0; n < TEST_THEME_COUNT_LEVELS; n++)
+        {
+            int count = fixture_theme_color_counts[n];
+            PaletteColor correct =
+                resolve_theme(theme, PALETTE_ROLE_CORRECT, count);
+            PaletteColor wrong =
+                resolve_theme(theme, PALETTE_ROLE_WRONG, count);
+            PaletteColor text = resolve_theme(theme, PALETTE_ROLE_TEXT, count);
+            ASSERT_TRUE(correct != wrong);
+            ASSERT_TRUE(correct != text);
+            ASSERT_TRUE(wrong != text);
+        }
+    }
+}
+
+static void test_themes_differ_in_background_and_text(void)
+{
+    for (int a = 0; a < PALETTE_THEME_COUNT; a++)
+    {
+        for (int b = a + 1; b < PALETTE_THEME_COUNT; b++)
+        {
+            for (int n = 0; n < TEST_THEME_COUNT_LEVELS; n++)
+            {
+                int count = fixture_theme_color_counts[n];
+                ASSERT_TRUE(resolve_theme_background(a, count) !=
+                            resolve_theme_background(b, count));
+                ASSERT_TRUE(resolve_theme(a, PALETTE_ROLE_TEXT, count) !=
+                            resolve_theme(b, PALETTE_ROLE_TEXT, count));
+            }
+        }
+    }
+}
+
+static void test_theme_colors_below_sixteen_resolve_to_basic_colors(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+        {
+            ASSERT_TRUE(resolve_theme(theme, (PaletteRole)role,
+                                      TETONOR_BASIC_COLOR_COUNT) <=
+                        PALETTE_COLOR_WHITE);
+        }
+        ASSERT_TRUE(
+            resolve_theme_background(theme, TETONOR_BASIC_COLOR_COUNT) <=
+            PALETTE_COLOR_WHITE);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_color_count_thresholds_match_the_tiers);
@@ -341,5 +505,13 @@ int main(void)
     RUN_TEST(test_strip_slot_role_typed_once_is_used_once_typed);
     RUN_TEST(test_strip_slot_role_typed_twice_is_used_twice_typed);
     RUN_TEST(test_strip_slot_role_used_states_never_share_a_role);
+    RUN_TEST(test_resolve_palette_color_bright_white_needs_sixteen_colors);
+    RUN_TEST(test_default_text_is_white_at_every_count);
+    RUN_TEST(test_theme_roles_differ_from_background_when_resolved);
+    RUN_TEST(test_theme_strip_roles_are_distinguishable_when_resolved);
+    RUN_TEST(test_theme_strip_roles_all_differ_at_sixteen);
+    RUN_TEST(test_theme_result_roles_are_distinguishable);
+    RUN_TEST(test_themes_differ_in_background_and_text);
+    RUN_TEST(test_theme_colors_below_sixteen_resolve_to_basic_colors);
     return test_harness_result();
 }

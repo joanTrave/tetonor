@@ -5,7 +5,6 @@
 
 #include "number_generation.h"
 #include "operand_group.h"
-#include "palette.h"
 #include "slot_usage.h"
 
 #define TETONOR_NO_CURSOR (-1) /* board has no editable slot */
@@ -89,14 +88,13 @@ typedef struct
     BoardResult result;
     SlotUsage slot_usages[TETONOR_CELL_COUNT]; /* derived from the strip and
                                                   the groups */
-    Palette palette;     /* every colour of the game; the only instance */
     MoveHistory history; /* this game's undoable moves; emptied by init_board */
     int move_count; /* moves of this game (see board_move_count); init_board
                        resets it, undo keeps it */
 } Board;
 
-/* Starts a fresh entry session over puzzle. Also fills the default palette and
- * the slot usages. Empties the move history and zeroes the move count. Acquires
+/* Starts a fresh entry session over puzzle. Also fills the slot usages. Empties
+ * the move history and zeroes the move count. Acquires
  * nothing: Board is a fixed-size value, so there is no matching release
  * function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
