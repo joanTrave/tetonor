@@ -17,13 +17,27 @@ UserDataPlatform current_user_data_platform(void);
 /* "LOCALAPPDATA" on Windows, "HOME" elsewhere. */
 const char* user_data_env_name(UserDataPlatform platform);
 
-/* base_dir + the platform's relative directory + "statistics.txt". Pure.
+/* base_dir + the platform's relative directory + file_name. Pure. Returns
+ * false (out emptied) on a NULL or empty base or file name, or when out is too
+ * small. */
+bool build_user_data_file_path(UserDataPlatform platform, const char* base_dir,
+                               const char* file_name, char* out, size_t size);
+
+/* build_user_data_file_path, then creates every missing directory below
+ * base_dir (never base_dir itself). Returns false when the path cannot be
+ * built or a directory cannot be created. */
+bool prepare_user_data_file_path(UserDataPlatform platform,
+                                 const char* base_dir, const char* file_name,
+                                 char* out, size_t size);
+
+/* build_user_data_file_path for "statistics.txt". Pure.
  * Returns false (out emptied) on a NULL or empty base or when out is too
  * small. */
 bool build_stats_file_path(UserDataPlatform platform, const char* base_dir,
                            char* out, size_t size);
 
-/* build_stats_file_path, then creates every missing directory below base_dir
+/* prepare_user_data_file_path for "statistics.txt": creates every missing
+ * directory below base_dir
  * (never base_dir itself). Returns false when the path cannot be built or a
  * directory cannot be created. */
 bool prepare_stats_file_path(UserDataPlatform platform, const char* base_dir,

@@ -481,7 +481,35 @@ void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds)
         case PAUSE_SCREEN_PROMPT:
             print_prompt_panel(pause, rows, cols);
             break;
+        case PAUSE_SCREEN_THEME:
         case PAUSE_SCREEN_PLAYING:
             break;
     }
+}
+
+void print_theme_screen(const ThemeMenu* menu)
+{
+    int rows = 0;
+    int cols = 0;
+    getmaxyx(stdscr, rows, cols);
+    if (!layout_fits(rows, cols))
+    {
+        mvprintw(0, 0, LAYOUT_ENLARGE_FORMAT, LAYOUT_MIN_COLS, LAYOUT_MIN_ROWS);
+        return;
+    }
+    LayoutPoint panel = layout_centered_window_origin(
+        rows, cols, LAYOUT_THEME_MENU_H, LAYOUT_THEME_MENU_W);
+    draw_box(panel.y, panel.x, LAYOUT_THEME_MENU_H, LAYOUT_THEME_MENU_W);
+    print_panel_title(panel, LAYOUT_THEME_MENU_W, LAYOUT_THEME_TITLE_ROW,
+                      LAYOUT_THEME_TITLE);
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        char text[LAYOUT_THEME_MENU_W];
+        snprintf(text, sizeof text, "%s%s", theme_menu_label(theme),
+                 theme_menu_marker(menu, theme));
+        print_panel_option(panel, layout_theme_option_row(theme), text,
+                           theme == (int)menu->selected);
+    }
+    print_panel_text(panel, LAYOUT_THEME_CHOOSE_ROW, LAYOUT_THEME_CHOOSE_HINT);
+    print_panel_text(panel, LAYOUT_THEME_BACK_ROW, LAYOUT_THEME_BACK_HINT);
 }

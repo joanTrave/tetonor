@@ -152,7 +152,8 @@ static bool build_or_empty(UserDataPlatform platform, const char* base_dir,
         return false;
     }
     out[0] = '\0';
-    if (base_dir == NULL || base_dir[0] == '\0' ||
+    if (base_dir == NULL || base_dir[0] == '\0' || file_name == NULL ||
+        file_name[0] == '\0' ||
         !build_path(platform, base_dir, file_name, create, out, size))
     {
         out[0] = '\0';
@@ -161,30 +162,43 @@ static bool build_or_empty(UserDataPlatform platform, const char* base_dir,
     return true;
 }
 
+bool build_user_data_file_path(UserDataPlatform platform, const char* base_dir,
+                               const char* file_name, char* out, size_t size)
+{
+    return build_or_empty(platform, base_dir, file_name, false, out, size);
+}
+
+bool prepare_user_data_file_path(UserDataPlatform platform,
+                                 const char* base_dir, const char* file_name,
+                                 char* out, size_t size)
+{
+    return build_or_empty(platform, base_dir, file_name, true, out, size);
+}
+
 bool build_stats_file_path(UserDataPlatform platform, const char* base_dir,
                            char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, TETONOR_STATS_FILE_NAME, false,
-                          out, size);
+    return build_user_data_file_path(platform, base_dir,
+                                     TETONOR_STATS_FILE_NAME, out, size);
 }
 
 bool prepare_stats_file_path(UserDataPlatform platform, const char* base_dir,
                              char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, TETONOR_STATS_FILE_NAME, true,
-                          out, size);
+    return prepare_user_data_file_path(platform, base_dir,
+                                       TETONOR_STATS_FILE_NAME, out, size);
 }
 
 bool build_saved_game_file_path(UserDataPlatform platform, const char* base_dir,
                                 char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, TETONOR_SAVED_GAME_FILE_NAME,
-                          false, out, size);
+    return build_user_data_file_path(platform, base_dir,
+                                     TETONOR_SAVED_GAME_FILE_NAME, out, size);
 }
 
 bool prepare_saved_game_file_path(UserDataPlatform platform,
                                   const char* base_dir, char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, TETONOR_SAVED_GAME_FILE_NAME,
-                          true, out, size);
+    return prepare_user_data_file_path(platform, base_dir,
+                                       TETONOR_SAVED_GAME_FILE_NAME, out, size);
 }

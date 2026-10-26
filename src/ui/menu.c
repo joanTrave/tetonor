@@ -7,6 +7,8 @@
 #include "difficulty_menu.h"
 #include "keys.h"
 #include "layout.h"
+#include "print_layout.h"
+#include "style.h"
 #include "stats_menu.h"
 #include "ui.h"
 #include "../game/game_port.h"
@@ -15,6 +17,7 @@ static const char menu_title[]         = "Welcome to Tetonor";
 static const char menu_continue_hint[] = LAYOUT_MENU_CONTINUE_HINT;
 static const char menu_start_hint[]    = "Press SPACE or ENTER to start game";
 static const char menu_stats_hint[]    = "Press S to view statistics";
+static const char menu_theme_hint[]    = "Press T to choose a theme";
 static const char menu_exit_hint[]     = "Press ESC to exit";
 
 static const char difficulty_title[]   = "Choose difficulty";
@@ -37,22 +40,26 @@ static MenuKeyCodes menu_key_codes(void);
 static void draw_difficulty_option(WINDOW* win, Difficulty level,
                                    Difficulty selected);
 static void draw_difficulty_menu(WINDOW* win, const DifficultyMenu* menu);
-static DifficultyMenuCommand read_difficulty_command(WINDOW* win);
 static bool run_difficulty_menu(DifficultyMenu* menu);
 static void draw_stats_row(WINDOW* win, const Statistics* statistics,
                            int difficulty);
 static void draw_stats_menu(WINDOW* win, const Statistics* statistics);
 static StatsMenuCommand read_stats_command(WINDOW* win);
 static bool run_stats_menu(const Statistics* statistics);
+static DifficultyMenuCommand read_difficulty_command(WINDOW* win);
+static ThemeMenuCommand read_theme_command(void);
+static void run_theme_menu(ConfigStore* config_store);
 static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
+                            ConfigStore* config_store,
                             SavedGameStore* saved_game_store,
                             const SavedGame* resume);
-static int run_saved_game(StatsStore* stats_store,
+static int run_saved_game(StatsStore* stats_store, ConfigStore* config_store,
                           SavedGameStore* saved_game_store);
 
-int ui_show_start_menu(StatsStore* stats_store,
+int ui_show_start_menu(StatsStore* stats_store, ConfigStore* config_store,
                        SavedGameStore* saved_game_store)
 {
+    apply_theme_styles(config_store->theme);
     for (;;)
     {
         clear_screen();
@@ -61,6 +68,11 @@ int ui_show_start_menu(StatsStore* stats_store,
                            saved_game_store_game(saved_game_store) != NULL))
         {
             return EXIT_FAILURE;
+        }
+        if (menu_result == MENU_THEME)
+        {
+            run_theme_menu(config_store);
+            continue;
         }
         if (menu_result == MENU_STATISTICS)
         {
@@ -80,7 +92,8 @@ int ui_show_start_menu(StatsStore* stats_store,
         if (menu_result == MENU_CONTINUE)
         {
             clear_screen();
-            status = run_saved_game(stats_store, saved_game_store);
+            status =
+                run_saved_game(stats_store, config_store, saved_game_store);
         }
         else
         {
@@ -97,7 +110,7 @@ int ui_show_start_menu(StatsStore* stats_store,
 
             clear_screen();
             status = run_game_session(difficulty_menu.selected, stats_store,
-                                      saved_game_store, NULL);
+                                      config_store, saved_game_store, NULL);
         }
         if (status != EXIT_SUCCESS)
         {
@@ -124,6 +137,7 @@ static WINDOW* create_centered_window(int height, int width)
     if (win != NULL)
     {
         keypad(win, TRUE);
+        apply_window_style(win);
     }
     return win;
 }
@@ -144,6 +158,8 @@ static void draw_main_menu(WINDOW* win, bool can_continue)
               menu_start_hint);
     mvwprintw(win, LAYOUT_MENU_STATS_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_stats_hint);
+    mvwprintw(win, LAYOUT_MENU_THEME_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              menu_theme_hint);
     mvwprintw(win, LAYOUT_MENU_EXIT_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_exit_hint);
 
@@ -330,7 +346,39 @@ static bool run_stats_menu(const Statistics* statistics)
     return true;
 }
 
+static ThemeMenuCommand read_theme_command(void)
+{
+    int key = getch();
+    if (key == ERR)
+    {
+        return THEME_MENU_COMMAND_BACK; /* input closed: leave, do not spin */
+    }
+    MenuKeyCodes key_codes = menu_key_codes();
+    return theme_menu_command_from_key(key, &key_codes);
+}
+
+/* Shows the theme screen over the whole terminal until a theme is chosen or
+ * the player goes back; a different choice is applied and saved at once. */
+static void run_theme_menu(ConfigStore* config_store)
+{
+    ThemeMenu menu;
+    init_theme_menu(&menu, config_store->theme);
+    while (menu.status == THEME_MENU_OPEN)
+    {
+        erase();
+        print_theme_screen(&menu);
+        refresh();
+        apply_theme_menu_command(&menu, read_theme_command());
+    }
+    if (menu.status == THEME_MENU_CHOSEN &&
+        menu.selected != config_store->theme)
+    {
+        ui_apply_theme(config_store, menu.selected);
+    }
+}
+
 static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
+                            ConfigStore* config_store,
                             SavedGameStore* saved_game_store,
                             const SavedGame* resume)
 {
@@ -340,14 +388,15 @@ static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
         return EXIT_FAILURE;
     }
     game_port->difficulty = difficulty;
-    int status = ui_run(game_port, stats_store, saved_game_store, resume);
+    int status =
+        ui_run(game_port, stats_store, config_store, saved_game_store, resume);
     destroy_game_port(game_port);
     return status;
 }
 
 /* Continues the saved game at its own difficulty. The game is copied first:
  * saving during play replaces the stored one. */
-static int run_saved_game(StatsStore* stats_store,
+static int run_saved_game(StatsStore* stats_store, ConfigStore* config_store,
                           SavedGameStore* saved_game_store)
 {
     const SavedGame* stored = saved_game_store_game(saved_game_store);
@@ -357,5 +406,5 @@ static int run_saved_game(StatsStore* stats_store,
     }
     SavedGame saved = *stored;
     return run_game_session((Difficulty)saved.difficulty, stats_store,
-                            saved_game_store, &saved);
+                            config_store, saved_game_store, &saved);
 }

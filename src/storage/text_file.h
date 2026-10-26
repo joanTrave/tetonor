@@ -4,24 +4,23 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Longest data file path, with the terminator. */
+/* Longest data file path, with the terminating NUL. */
 #define TETONOR_TEXT_FILE_PATH_MAX 1024
 
 typedef enum
 {
     TEXT_FILE_READ_OK,
-    TEXT_FILE_READ_MISSING, /* the file cannot be opened */
-    TEXT_FILE_READ_FAILED   /* read error, or longer than max_length */
+    TEXT_FILE_READ_MISSING, /* cannot be opened */
+    TEXT_FILE_READ_FAILED   /* read error, or capacity bytes or more */
 } TextFileReadResult;
 
-/* Reads the whole file into text. text must hold max_length + 1 bytes; *length
- * is set only on TEXT_FILE_READ_OK. */
-TextFileReadResult read_text_file(const char* path, char* text,
-                                  size_t max_length, size_t* length);
+/* Reads the whole file at path into out (capacity bytes, no terminator added)
+ * and its size into *length. */
+TextFileReadResult read_text_file(const char* path, char* out, size_t capacity,
+                                  size_t* length);
 
-/* Writes text to path + ".tmp", then replaces path. Never leaves a partial
- * file at path and removes the temporary on failure. Returns false when the
- * path is too long or any step fails. */
-bool write_text_file_atomically(const char* path, const char* text);
+/* Writes text to path + ".tmp", then replaces path with it. Never leaves a
+ * partial file at path. False when path is too long or any step fails. */
+bool write_text_file_atomic(const char* path, const char* text);
 
 #endif

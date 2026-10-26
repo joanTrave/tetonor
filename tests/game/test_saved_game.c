@@ -1083,13 +1083,12 @@ static void test_restore_saved_game_restores_the_board(void)
     ASSERT_NOT_NULL(puzzle);
     Board fresh;
     init_board(&fresh, puzzle);
-    bool same_puzzle = number_generations_equal(puzzle, &saved.puzzle);
-    bool owned       = puzzle != &saved.puzzle && board.puzzle == puzzle;
-    bool same_start =
-        board.cursor == fresh.cursor && board.focus == fresh.focus &&
-        board.group_cursor == fresh.group_cursor &&
-        board.group_field == fresh.group_field &&
-        memcmp(&board.palette, &fresh.palette, sizeof board.palette) == 0;
+    bool same_puzzle  = number_generations_equal(puzzle, &saved.puzzle);
+    bool owned        = puzzle != &saved.puzzle && board.puzzle == puzzle;
+    bool same_start   = board.cursor == fresh.cursor &&
+                        board.focus == fresh.focus &&
+                        board.group_cursor == fresh.group_cursor &&
+                        board.group_field == fresh.group_field;
     bool same_entries = true;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {

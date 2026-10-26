@@ -17,6 +17,10 @@ MenuResult menu_result_from_key(int key, int enter_key)
     {
         return MENU_STATISTICS;
     }
+    if (key == TETONOR_KEY_THEME || key == TETONOR_KEY_THEME_UPPER)
+    {
+        return MENU_THEME;
+    }
     if (key == TETONOR_KEY_CONTINUE || key == TETONOR_KEY_CONTINUE_UPPER)
     {
         return MENU_CONTINUE;
@@ -77,6 +81,10 @@ PauseMenuCommand pause_menu_command_from_key(int key,
         key == TETONOR_KEY_PAUSE_UPPER)
     {
         return PAUSE_MENU_COMMAND_RESUME;
+    }
+    if (key == TETONOR_KEY_THEME || key == TETONOR_KEY_THEME_UPPER)
+    {
+        return PAUSE_MENU_COMMAND_THEME;
     }
     if (key == TETONOR_KEY_SAVE || key == TETONOR_KEY_SAVE_UPPER)
     {
@@ -228,7 +236,34 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     {
         return make_board_command(BOARD_COMMAND_MAIN_MENU, 0, 0);
     }
+    if (key == TETONOR_KEY_THEME || key == TETONOR_KEY_THEME_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_THEME, 0, 0);
+    }
     return make_board_command(BOARD_COMMAND_NONE, 0, 0);
+}
+
+ThemeMenuCommand theme_menu_command_from_key(int key,
+                                             const MenuKeyCodes* key_codes)
+{
+    if (key_matches(key, key_codes->up))
+    {
+        return THEME_MENU_COMMAND_UP;
+    }
+    if (key_matches(key, key_codes->down))
+    {
+        return THEME_MENU_COMMAND_DOWN;
+    }
+    if (is_select_key(key, key_codes))
+    {
+        return THEME_MENU_COMMAND_SELECT;
+    }
+    if (key == TETONOR_KEY_ESCAPE || key == TETONOR_KEY_THEME ||
+        key == TETONOR_KEY_THEME_UPPER)
+    {
+        return THEME_MENU_COMMAND_BACK;
+    }
+    return THEME_MENU_COMMAND_NONE;
 }
 
 StatsMenuCommand stats_menu_command_from_key(int key)

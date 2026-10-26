@@ -76,6 +76,9 @@ static GameAction apply_open_menu_command(PauseState* state,
         case PAUSE_MENU_COMMAND_RESUME:
             state->screen = PAUSE_SCREEN_PLAYING;
             break;
+        case PAUSE_MENU_COMMAND_THEME:
+            open_theme_screen(state);
+            break;
         case PAUSE_MENU_COMMAND_SELECT:
             return select_pause_option(state, progress_at_risk);
         case PAUSE_MENU_COMMAND_SAVE:
@@ -146,6 +149,32 @@ void open_pause_menu(PauseState* state)
     state->screen      = PAUSE_SCREEN_MENU;
     state->selected    = PAUSE_OPTION_RESUME;
     state->save_notice = PAUSE_SAVE_NOTICE_NONE;
+}
+
+void open_theme_screen(PauseState* state)
+{
+    if (state->screen != PAUSE_SCREEN_PLAYING &&
+        state->screen != PAUSE_SCREEN_MENU)
+    {
+        return;
+    }
+    state->cancel_to = state->screen;
+    state->screen    = PAUSE_SCREEN_THEME;
+}
+
+void close_theme_screen(PauseState* state)
+{
+    if (state->screen != PAUSE_SCREEN_THEME)
+    {
+        return;
+    }
+    state->screen    = state->cancel_to;
+    state->cancel_to = PAUSE_SCREEN_PLAYING;
+}
+
+bool is_theme_screen_shown(const PauseState* state)
+{
+    return state->screen == PAUSE_SCREEN_THEME;
 }
 
 GameAction request_game_action(PauseState* state, GameAction action,

@@ -1803,6 +1803,495 @@ static void test_restart_button_and_n_reset_moves_and_victory(void)
     run_session_test(check_failed_new_game_keeps_moves);
 }
 
+#define TEST_THEME_OPENED_AT (TEST_START_TIME + 10)
+#define TEST_THEME_CLOSED_AT (TEST_THEME_OPENED_AT + 30)
+#define TEST_AFTER_THEME_AT (TEST_THEME_CLOSED_AT + 2)
+#define TEST_FAR_THEME 99
+
+static const int theme_wrong_keys[] = {TEST_UP_KEY, TEST_DELETE_KEY, '8',
+                                       TEST_RIGHT_KEY, TEST_ENTER_KEY};
+
+static GameSessionOutcome choose_next_theme(const GamePort* game_port,
+                                            GameSession* session, time_t now)
+{
+    press(game_port, session, TEST_DOWN_KEY, now);
+    return press(game_port, session, TEST_ENTER_KEY, now);
+}
+
+static void test_init_game_session_uses_default_theme(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    bool started       = start_session(game_port, &session, TEST_START_TIME);
+    PaletteTheme theme = session.theme;
+    bool shown         = is_theme_screen_shown(&session.pause);
+    ThemeMenuStatus status = session.theme_menu.status;
+    if (started)
+    {
+        end_game_session(game_port, &session);
+    }
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_EQ_INT(theme, TETONOR_DEFAULT_PALETTE_THEME);
+    ASSERT_FALSE(shown);
+    ASSERT_EQ_INT(status, THEME_MENU_OPEN);
+}
+
+static void check_set_theme_sets_and_defaults(const GamePort* game_port,
+                                              GameSession* session)
+{
+    make_edit(game_port, session);
+    Board board      = session->board;
+    GameTimer timer  = session->timer;
+    PauseState pause = session->pause;
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    set_game_session_theme(session, -1);
+    ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    set_game_session_theme(session, PALETTE_THEME_COUNT);
+    ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    set_game_session_theme(session, TEST_FAR_THEME);
+    ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    ASSERT_TRUE(boards_match(&session->board, &board));
+    ASSERT_TRUE(timers_match(&session->timer, &timer));
+    ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+}
+
+static void test_set_game_session_theme_sets_and_defaults(void)
+{
+    run_session_test(check_set_theme_sets_and_defaults);
+}
+
+static void check_t_opens_theme_screen_and_pauses(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    const int keys[] = {'t', 'T'};
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_THEME_OPENED_AT),
+                      GAME_SESSION_CONTINUE);
+        ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+        ASSERT_EQ_INT(session->theme_menu.active, PALETTE_THEME_LIGHT);
+        ASSERT_EQ_INT(session->theme_menu.selected, PALETTE_THEME_LIGHT);
+        ASSERT_EQ_INT(session->theme_menu.status, THEME_MENU_OPEN);
+        ASSERT_TRUE(session->timer.paused);
+        ASSERT_EQ_INT(
+            press(game_port, session, TETONOR_KEY_ESCAPE, TEST_THEME_OPENED_AT),
+            GAME_SESSION_CONTINUE);
+        ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+        ASSERT_FALSE(session->timer.paused);
+    }
+}
+
+static void test_handle_game_session_key_t_opens_theme_screen_and_pauses(void)
+{
+    run_session_test(check_t_opens_theme_screen_and_pauses);
+}
+
+static void check_theme_change_keeps_the_game(const GamePort* game_port,
+                                              GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_THEME_OPENED_AT));
+    int32_t elapsed = session->timer.elapsed_seconds;
+    ASSERT_EQ_INT(elapsed, TEST_THEME_OPENED_AT - TEST_START_TIME);
+    Board before       = session->board;
+    int history        = session->board.history.count;
+    int moves          = moves_of(game_port, session);
+    BoardResult result = session->board.result;
+    ASSERT_TRUE(history > 0);
+
+    press(game_port, session, 'T', TEST_THEME_OPENED_AT);
+    ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+    ASSERT_EQ_INT(choose_next_theme(game_port, session, TEST_THEME_CLOSED_AT),
+                  GAME_SESSION_THEME_CHANGED);
+
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+    ASSERT_EQ_INT(session->board.history.count, history);
+    ASSERT_EQ_INT(moves_of(game_port, session), moves);
+    ASSERT_EQ_INT(session->board.result, result);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, elapsed);
+    ASSERT_TRUE(session->timer.running);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+    ASSERT_EQ_INT(fake_free_calls, 0);
+
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_AFTER_THEME_AT));
+    ASSERT_EQ_INT(session->timer.elapsed_seconds,
+                  elapsed + (TEST_AFTER_THEME_AT - TEST_THEME_CLOSED_AT));
+}
+
+static void test_theme_change_keeps_board_history_result_and_timer(void)
+{
+    run_session_test(check_theme_change_keeps_the_game);
+}
+
+static void check_theme_change_on_wrong_board(const GamePort* game_port,
+                                              GameSession* session)
+{
+    fill_without_confirming(game_port, session, TEST_START_TIME);
+    press_all(game_port, session, theme_wrong_keys,
+              sizeof theme_wrong_keys / sizeof theme_wrong_keys[0],
+              TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_WRONG);
+    Board before = session->board;
+
+    press(game_port, session, 't', TEST_THEME_OPENED_AT);
+    ASSERT_EQ_INT(choose_next_theme(game_port, session, TEST_THEME_CLOSED_AT),
+                  GAME_SESSION_THEME_CHANGED);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_WRONG);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+
+    ASSERT_EQ_INT(press(game_port, session, 'u', TEST_AFTER_THEME_AT),
+                  GAME_SESSION_CONTINUE);
+    bool undone = game_port->undo_board_move_f(&before);
+    ASSERT_EQ_INT(session->undo_notice, !undone);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+}
+
+static void test_theme_change_on_wrong_board_keeps_verdict(void)
+{
+    run_session_test(check_theme_change_on_wrong_board);
+}
+
+static void check_theme_change_on_solved_board(const GamePort* game_port,
+                                               GameSession* session)
+{
+    solve_session(game_port, session, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    Board before = session->board;
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+    ASSERT_EQ_INT(choose_next_theme(game_port, session, TEST_START_TIME),
+                  GAME_SESSION_THEME_CHANGED);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+}
+
+static void test_theme_change_on_solved_board_still_completes(void)
+{
+    run_session_test(check_theme_change_on_solved_board);
+}
+
+static void check_theme_select_same_theme(const GamePort* game_port,
+                                          GameSession* session)
+{
+    make_edit(game_port, session);
+    Board before = session->board;
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, ' ', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+}
+
+static void test_theme_select_same_theme_is_continue(void)
+{
+    run_session_test(check_theme_select_same_theme);
+}
+
+static void check_theme_screen_back_keeps_theme(const GamePort* game_port,
+                                                GameSession* session)
+{
+    const int back_keys[] = {TETONOR_KEY_ESCAPE, 't', 'T'};
+    for (size_t i = 0; i < sizeof back_keys / sizeof back_keys[0]; i++)
+    {
+        make_edit(game_port, session);
+        Board before = session->board;
+        press(game_port, session, 'T', TEST_START_TIME);
+        press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+        ASSERT_EQ_INT(press(game_port, session, back_keys[i], TEST_START_TIME),
+                      GAME_SESSION_CONTINUE);
+        ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+        ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+        ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+        ASSERT_FALSE(session->timer.paused);
+        ASSERT_TRUE(boards_match(&session->board, &before));
+        press(game_port, session, 'u', TEST_START_TIME);
+    }
+}
+
+static void test_theme_screen_back_keeps_theme(void)
+{
+    run_session_test(check_theme_screen_back_keeps_theme);
+}
+
+static void
+check_theme_screen_back_does_not_leave_the_game(const GamePort* game_port,
+                                                GameSession* session)
+{
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_EQ_INT(
+        press(game_port, session, TETONOR_KEY_ESCAPE, TEST_START_TIME),
+        GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(fake_free_calls, 0);
+}
+
+static void test_theme_screen_escape_never_leaves_the_game(void)
+{
+    run_session_test(check_theme_screen_back_does_not_leave_the_game);
+}
+
+static void check_theme_screen_ignores_game_keys(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    make_edit(game_port, session);
+    const int keys[] = {'0',
+                        TEST_TYPED_DIGIT,
+                        '9',
+                        'u',
+                        'U',
+                        'p',
+                        'P',
+                        'n',
+                        'N',
+                        'm',
+                        'M',
+                        's',
+                        'y',
+                        '+',
+                        'x',
+                        TEST_BACKSPACE_KEY,
+                        TEST_DELETE_KEY,
+                        TEST_LEFT_KEY,
+                        TEST_RIGHT_KEY,
+                        TEST_RESIZE_KEY,
+                        0,
+                        TEST_ERR_KEY};
+    press(game_port, session, 'T', TEST_START_TIME);
+    Board board      = session->board;
+    GameTimer timer  = session->timer;
+    PauseState pause = session->pause;
+    ThemeMenu menu   = session->theme_menu;
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME),
+                      GAME_SESSION_CONTINUE);
+        ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+        ASSERT_TRUE(boards_match(&session->board, &board));
+        ASSERT_TRUE(timers_match(&session->timer, &timer));
+        ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+        ASSERT_EQ_INT(session->theme_menu.selected, menu.selected);
+        ASSERT_EQ_INT(session->theme_menu.status, THEME_MENU_OPEN);
+        ASSERT_FALSE(session->undo_notice);
+    }
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+    ASSERT_EQ_INT(fake_free_calls, 0);
+}
+
+static void test_theme_screen_ignores_game_keys(void)
+{
+    run_session_test(check_theme_screen_ignores_game_keys);
+}
+
+static void
+check_theme_screen_navigation_stops_at_the_ends(const GamePort* game_port,
+                                                GameSession* session)
+{
+    press(game_port, session, 'T', TEST_START_TIME);
+    press(game_port, session, TEST_UP_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(session->theme_menu.selected, PALETTE_THEME_CLASSIC);
+    for (int step = 0; step < PALETTE_THEME_COUNT + 1; step++)
+    {
+        press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    }
+    ASSERT_EQ_INT(session->theme_menu.selected, PALETTE_THEME_COUNT - 1);
+    ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+}
+
+static void test_theme_screen_navigation_does_not_change_the_theme(void)
+{
+    run_session_test(check_theme_screen_navigation_stops_at_the_ends);
+}
+
+static void check_pause_menu_t_returns_to_menu(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, 'P', TEST_START_TIME + 1);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME + 1);
+    ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_ABANDON);
+    ASSERT_TRUE(session->timer.paused);
+    int32_t elapsed = session->timer.elapsed_seconds;
+    ASSERT_EQ_INT(press(game_port, session, 'T', TEST_THEME_OPENED_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+    ASSERT_EQ_INT(session->theme_menu.active, TETONOR_DEFAULT_PALETTE_THEME);
+    ASSERT_TRUE(session->timer.paused);
+    ASSERT_EQ_INT(
+        press(game_port, session, TETONOR_KEY_ESCAPE, TEST_THEME_CLOSED_AT),
+        GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_ABANDON);
+    ASSERT_TRUE(session->timer.paused);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, elapsed);
+
+    press(game_port, session, TEST_UP_KEY, TEST_THEME_CLOSED_AT);
+    press(game_port, session, 'p', TEST_THEME_CLOSED_AT);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, elapsed);
+}
+
+static void test_pause_menu_t_opens_theme_and_returns_to_menu(void)
+{
+    run_session_test(check_pause_menu_t_returns_to_menu);
+}
+
+static void check_pause_menu_theme_change(const GamePort* game_port,
+                                          GameSession* session)
+{
+    make_edit(game_port, session);
+    Board before = session->board;
+    press(game_port, session, 'P', TEST_START_TIME);
+    press(game_port, session, 't', TEST_START_TIME);
+    ASSERT_EQ_INT(choose_next_theme(game_port, session, TEST_THEME_CLOSED_AT),
+                  GAME_SESSION_THEME_CHANGED);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(session->pause.selected, PAUSE_OPTION_RESUME);
+    ASSERT_TRUE(session->timer.paused);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+    ASSERT_EQ_INT(
+        press(game_port, session, TETONOR_KEY_ESCAPE, TEST_THEME_CLOSED_AT),
+        GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_FALSE(session->timer.paused);
+}
+
+static void test_pause_menu_theme_change_returns_to_menu(void)
+{
+    run_session_test(check_pause_menu_theme_change);
+}
+
+static void
+check_theme_screen_reopens_marking_the_new_theme(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_EQ_INT(choose_next_theme(game_port, session, TEST_START_TIME),
+                  GAME_SESSION_THEME_CHANGED);
+    press(game_port, session, 'T', TEST_START_TIME);
+    ASSERT_EQ_INT(session->theme_menu.active, PALETTE_THEME_LIGHT);
+    ASSERT_EQ_INT(session->theme_menu.selected, PALETTE_THEME_LIGHT);
+    ASSERT_EQ_INT(session->theme_menu.status, THEME_MENU_OPEN);
+}
+
+static void test_theme_screen_reopens_marking_the_new_theme(void)
+{
+    run_session_test(check_theme_screen_reopens_marking_the_new_theme);
+}
+
+static void check_victory_ignores_t(const GamePort* game_port,
+                                    GameSession* session)
+{
+    complete_session(game_port, session);
+    VictoryState victory = session->victory;
+    const int keys[]     = {'t', 'T'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_COMPLETED_AT),
+                      GAME_SESSION_CONTINUE);
+        ASSERT_TRUE(is_victory_shown(&session->victory));
+        ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+        ASSERT_TRUE(victory_states_match(&session->victory, &victory));
+        ASSERT_EQ_INT(session->theme, TETONOR_DEFAULT_PALETTE_THEME);
+    }
+}
+
+static void check_prompt_ignores_t(const GamePort* game_port,
+                                   GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    PauseState pause = session->pause;
+    const int keys[] = {'t', 'T'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME),
+                      GAME_SESSION_CONTINUE);
+        ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+        ASSERT_TRUE(pause_states_match(&session->pause, &pause));
+    }
+}
+
+static void test_victory_and_prompt_ignore_t(void)
+{
+    run_session_test(check_victory_ignores_t);
+    run_session_test(check_prompt_ignores_t);
+}
+
+static void check_restart_keeps_the_theme(const GamePort* game_port,
+                                          GameSession* session)
+{
+    set_game_session_theme(session, PALETTE_THEME_LIGHT);
+    make_edit(game_port, session);
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'y', TEST_RESTART_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+    ASSERT_FALSE(is_theme_screen_shown(&session->pause));
+
+    press(game_port, session, TEST_DOWN_KEY, TEST_RESTART_AT);
+    press(game_port, session, TEST_DOWN_KEY, TEST_RESTART_AT);
+    ASSERT_EQ_INT(session->board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_RESTART_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+}
+
+static void test_restart_keeps_session_theme(void)
+{
+    run_session_test(check_restart_keeps_the_theme);
+}
+
+static void check_failed_new_game_keeps_the_theme(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'T', TEST_START_TIME);
+    choose_next_theme(game_port, session, TEST_START_TIME);
+    fake_generate_fails = true;
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'y', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->theme, PALETTE_THEME_LIGHT);
+}
+
+static void test_failed_new_game_keeps_session_theme(void)
+{
+    run_session_test(check_failed_new_game_keeps_the_theme);
+}
+
 #define TEST_PAUSED_AT (TEST_START_TIME + 30)
 #define TEST_SAVE_KEY 's'
 #define TEST_SAVE_KEY_UPPER 'S'
@@ -2455,6 +2944,23 @@ int main(void)
     RUN_TEST(test_victory_again_after_new_game);
     RUN_TEST(test_handle_game_session_key_undo_keeps_the_move_count);
     RUN_TEST(test_restart_button_and_n_reset_moves_and_victory);
+    RUN_TEST(test_init_game_session_uses_default_theme);
+    RUN_TEST(test_set_game_session_theme_sets_and_defaults);
+    RUN_TEST(test_handle_game_session_key_t_opens_theme_screen_and_pauses);
+    RUN_TEST(test_theme_change_keeps_board_history_result_and_timer);
+    RUN_TEST(test_theme_change_on_wrong_board_keeps_verdict);
+    RUN_TEST(test_theme_change_on_solved_board_still_completes);
+    RUN_TEST(test_theme_select_same_theme_is_continue);
+    RUN_TEST(test_theme_screen_back_keeps_theme);
+    RUN_TEST(test_theme_screen_escape_never_leaves_the_game);
+    RUN_TEST(test_theme_screen_ignores_game_keys);
+    RUN_TEST(test_theme_screen_navigation_does_not_change_the_theme);
+    RUN_TEST(test_pause_menu_t_opens_theme_and_returns_to_menu);
+    RUN_TEST(test_pause_menu_theme_change_returns_to_menu);
+    RUN_TEST(test_theme_screen_reopens_marking_the_new_theme);
+    RUN_TEST(test_victory_and_prompt_ignore_t);
+    RUN_TEST(test_restart_keeps_session_theme);
+    RUN_TEST(test_failed_new_game_keeps_session_theme);
     RUN_TEST(test_handle_game_session_key_s_in_the_pause_menu_asks_to_save);
     RUN_TEST(test_handle_game_session_key_save_request_keeps_the_selection);
     RUN_TEST(test_handle_game_session_key_s_while_playing_changes_nothing);

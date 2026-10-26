@@ -2231,7 +2231,6 @@ static void test_apply_board_input_never_changes_given_numbers(void)
 #define TEST_TYPED_TWO_DIGIT_VALUE 29
 #define TEST_THIRD_GROUP_CELL 2
 #define TEST_FOURTH_GROUP_CELL 3
-#define TEST_GARBAGE_BYTE 0xA5
 #define TEST_INPUT_KIND_COUNT 8
 #define TEST_FOCUS_COUNT 4
 
@@ -2295,27 +2294,6 @@ static int marked_usage_count(const Board* board)
     return count;
 }
 
-static bool palette_entries_equal(const PaletteEntry* first,
-                                  const PaletteEntry* second)
-{
-    return first->color == second->color && first->fallback == second->fallback;
-}
-
-static bool palette_is_default(const Palette* palette)
-{
-    Palette expected;
-    init_palette(&expected);
-    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
-    {
-        if (!palette_entries_equal(&palette->foregrounds[role],
-                                   &expected.foregrounds[role]))
-        {
-            return false;
-        }
-    }
-    return palette_entries_equal(&palette->background, &expected.background);
-}
-
 static void test_init_board_slot_usages_start_unmarked(void)
 {
     NumberGeneration puzzle;
@@ -2343,28 +2321,6 @@ static void test_init_board_recomputes_usages_of_a_previous_session(void)
     set_all_usages(&board, SLOT_USAGE_TWICE);
     init_board(&board, &puzzle);
     ASSERT_TRUE(all_usages_are(&board, SLOT_USAGE_NONE));
-}
-
-static void test_init_board_fills_the_default_palette(void)
-{
-    NumberGeneration puzzle;
-    Board board;
-    build_fixture_puzzle(&puzzle, fixture_hidden, TEST_EDITABLE_COUNT);
-    memset(&board.palette, TEST_GARBAGE_BYTE, sizeof board.palette);
-    init_board(&board, &puzzle);
-    ASSERT_TRUE(palette_is_default(&board.palette));
-}
-
-static void test_init_board_restores_the_default_palette_of_a_used_board(void)
-{
-    NumberGeneration puzzle;
-    Board board;
-    start_default_board(&puzzle, &board);
-    board.palette.foregrounds[PALETTE_ROLE_USED_ONCE].color =
-        PALETTE_COLOR_MAGENTA;
-    ASSERT_FALSE(palette_is_default(&board.palette));
-    init_board(&board, &puzzle);
-    ASSERT_TRUE(palette_is_default(&board.palette));
 }
 
 static void test_apply_board_input_group_entry_marks_the_strip_live(void)
@@ -2945,8 +2901,8 @@ static void test_apply_board_input_restart_up_up_returns_to_slot(void)
 #define TEST_OTHER_DIGIT 3
 #define TEST_OVER_MAXIMUM_DIGIT 5
 
-/* Everything a move can change; focus, cursors, palette and history are left
- * out on purpose. */
+/* Everything a move can change; focus, cursors and history are left out on
+ * purpose. */
 static bool entries_equal(const Board* first, const Board* second)
 {
     return slots_equal(first, second) &&
@@ -3617,22 +3573,15 @@ static void test_undo_board_move_without_editable_slots(void)
     ASSERT_FALSE(undo_board_move(&board));
 }
 
-static void test_undo_board_move_keeps_puzzle_palette_and_editable_flags(void)
+static void test_undo_board_move_keeps_puzzle_and_editable_flags(void)
 {
     NumberGeneration puzzle;
     Board board;
     start_default_board(&puzzle, &board);
     Board initial = board;
     press_digit(&board, 7);
-    board.palette.foregrounds[PALETTE_ROLE_USED_ONCE].color =
-        PALETTE_COLOR_MAGENTA;
-    Board before = board;
     ASSERT_TRUE(undo_board_move(&board));
     ASSERT_TRUE(board.puzzle == &puzzle);
-    ASSERT_FALSE(palette_is_default(&board.palette));
-    ASSERT_TRUE(palette_entries_equal(
-        &board.palette.foregrounds[PALETTE_ROLE_USED_ONCE],
-        &before.palette.foregrounds[PALETTE_ROLE_USED_ONCE]));
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
         ASSERT_EQ_INT(board.slots[i].editable, initial.slots[i].editable);
@@ -4333,8 +4282,7 @@ static void test_restore_board_starts_where_init_board_starts(void)
     start_default_board(&puzzle, &board);
     press(&board, BOARD_INPUT_MOVE_RIGHT);
     place_group_focus(&board, 9, GROUP_FIELD_GREATER);
-    board.focus                    = BOARD_FOCUS_RESTART;
-    board.palette.background.color = PALETTE_COLOR_RED;
+    board.focus = BOARD_FOCUS_RESTART;
     BoardSnapshot entries;
     make_restore_entries(&entries);
     restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
@@ -4346,8 +4294,6 @@ static void test_restore_board_starts_where_init_board_starts(void)
     ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
     ASSERT_EQ_INT(board.group_cursor, fresh.group_cursor);
     ASSERT_EQ_INT(board.group_field, fresh.group_field);
-    ASSERT_EQ_INT(memcmp(&board.palette, &fresh.palette, sizeof board.palette),
-                  0);
 }
 
 static void test_restore_board_without_editable_slots_focuses_the_groups(void)
@@ -4629,8 +4575,6 @@ int main(void)
     RUN_TEST(test_init_board_slot_usages_start_unmarked);
     RUN_TEST(test_init_board_without_editable_slots_has_unmarked_usages);
     RUN_TEST(test_init_board_recomputes_usages_of_a_previous_session);
-    RUN_TEST(test_init_board_fills_the_default_palette);
-    RUN_TEST(test_init_board_restores_the_default_palette_of_a_used_board);
     RUN_TEST(test_apply_board_input_group_entry_marks_the_strip_live);
     RUN_TEST(test_apply_board_input_empty_hidden_slot_is_never_marked);
     RUN_TEST(test_apply_board_input_typing_a_used_value_marks_it_at_once);
@@ -4698,7 +4642,7 @@ int main(void)
     RUN_TEST(test_init_board_empties_move_history);
     RUN_TEST(test_init_board_empties_a_full_move_history);
     RUN_TEST(test_undo_board_move_without_editable_slots);
-    RUN_TEST(test_undo_board_move_keeps_puzzle_palette_and_editable_flags);
+    RUN_TEST(test_undo_board_move_keeps_puzzle_and_editable_flags);
     RUN_TEST(test_is_board_locked_follows_the_result);
     RUN_TEST(test_apply_board_input_locked_board_ignores_digits);
     RUN_TEST(test_apply_board_input_locked_board_ignores_operations);

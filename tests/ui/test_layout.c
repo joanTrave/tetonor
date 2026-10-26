@@ -8,6 +8,7 @@
 #include "../../src/game/operand_group.h"
 #include "../../src/ui/layout.h"
 #include "../../src/ui/pause_menu.h"
+#include "../../src/ui/theme_menu.h"
 #include "../../src/ui/victory_menu.h"
 
 #define TEST_FIELD_COUNT 3
@@ -485,12 +486,14 @@ static void test_layout_main_menu_rows_fit_window(void)
     ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW >= 1);
     ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW < LAYOUT_MENU_START_ROW);
     ASSERT_TRUE(LAYOUT_MENU_START_ROW < LAYOUT_MENU_STATS_ROW);
-    ASSERT_TRUE(LAYOUT_MENU_STATS_ROW < LAYOUT_MENU_EXIT_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_STATS_ROW < LAYOUT_MENU_THEME_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_THEME_ROW < LAYOUT_MENU_EXIT_ROW);
     ASSERT_TRUE(LAYOUT_MENU_EXIT_ROW < LAYOUT_MENU_H - 1);
     ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
     ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
-    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 5);
-    ASSERT_EQ_INT(LAYOUT_MENU_H, 7);
+    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 8);
 }
 
 static void test_layout_main_menu_statistics_hint_fits_window_width(void)
@@ -563,7 +566,8 @@ static void test_layout_help_lines_texts(void)
                        "Arrows move   0-9 type   + x * "
                        "operation   BACKSPACE delete") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(1),
-                       "ENTER/SPACE press button   U undo   P pause") == 0);
+                       "ENTER/SPACE press button   U undo   P pause   T "
+                       "theme") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(2),
                        "N new game   M main menu   ESC leave without asking") ==
                 0);
@@ -809,6 +813,116 @@ static void test_layout_victory_fits_the_minimum_terminal(void)
     ASSERT_FALSE(layout_fits(LAYOUT_MIN_ROWS - 1, LAYOUT_MIN_COLS));
 }
 
+static void test_layout_theme_rows(void)
+{
+    ASSERT_EQ_INT(PALETTE_THEME_COUNT, 2);
+    ASSERT_EQ_INT(layout_theme_option_row(PALETTE_THEME_CLASSIC), 3);
+    ASSERT_EQ_INT(layout_theme_option_row(PALETTE_THEME_LIGHT), 4);
+    ASSERT_EQ_INT(LAYOUT_THEME_TITLE_ROW, 1);
+    ASSERT_EQ_INT(LAYOUT_THEME_CHOOSE_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_THEME_BACK_ROW, 7);
+    ASSERT_EQ_INT(LAYOUT_THEME_MENU_H, 9);
+    ASSERT_EQ_INT(LAYOUT_THEME_MENU_W, LAYOUT_MENU_W);
+}
+
+static void test_layout_theme_rows_follow_the_theme_count(void)
+{
+    int last_option = layout_theme_option_row(PALETTE_THEME_COUNT - 1);
+    ASSERT_EQ_INT(layout_theme_option_row(0), LAYOUT_THEME_FIRST_OPTION_ROW);
+    ASSERT_EQ_INT(LAYOUT_THEME_CHOOSE_ROW, last_option + 2);
+    ASSERT_EQ_INT(LAYOUT_THEME_BACK_ROW, LAYOUT_THEME_CHOOSE_ROW + 1);
+    ASSERT_EQ_INT(LAYOUT_THEME_MENU_H, LAYOUT_THEME_BACK_ROW + 2);
+}
+
+static void test_layout_theme_rows_inside(void)
+{
+    int rows[PALETTE_THEME_COUNT + 4];
+    int count     = 0;
+    rows[count++] = LAYOUT_THEME_TITLE_ROW;
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        rows[count++] = layout_theme_option_row(theme);
+    }
+    rows[count++] = LAYOUT_THEME_CHOOSE_ROW;
+    rows[count++] = LAYOUT_THEME_BACK_ROW;
+    for (int i = 0; i < count; i++)
+    {
+        ASSERT_TRUE(rows[i] >= 1);
+        ASSERT_TRUE(rows[i] <= LAYOUT_THEME_MENU_H - 2);
+        if (i > 0)
+        {
+            ASSERT_TRUE(rows[i] > rows[i - 1]);
+        }
+    }
+}
+
+static void test_layout_theme_texts_fit(void)
+{
+    int text_width = LAYOUT_THEME_MENU_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_EQ_INT(strcmp(LAYOUT_THEME_TITLE, "Choose theme"), 0);
+    ASSERT_EQ_INT(strcmp(LAYOUT_THEME_BACK_HINT, "Press ESC or T to go back"),
+                  0);
+    ASSERT_EQ_INT(strcmp(LAYOUT_THEME_CHOOSE_HINT, LAYOUT_PAUSE_CHOOSE_HINT),
+                  0);
+    ASSERT_TRUE((int)strlen(LAYOUT_THEME_TITLE) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_THEME_CHOOSE_HINT) <= text_width);
+    ASSERT_TRUE((int)strlen(LAYOUT_THEME_BACK_HINT) <= text_width);
+    ThemeMenu menu;
+    for (int active = 0; active < PALETTE_THEME_COUNT; active++)
+    {
+        init_theme_menu(&menu, active);
+        for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+        {
+            int option_width = (int)strlen("> ") +
+                               (int)strlen(theme_menu_label(theme)) +
+                               (int)strlen(theme_menu_marker(&menu, theme));
+            ASSERT_TRUE(option_width <= text_width);
+        }
+    }
+}
+
+static void test_layout_theme_fits_the_minimum_terminal(void)
+{
+    LayoutPoint origin =
+        layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
+                                      LAYOUT_THEME_MENU_H, LAYOUT_THEME_MENU_W);
+    ASSERT_POINT(origin, 9, 15);
+    ASSERT_EQ_INT(origin.y + LAYOUT_THEME_MENU_H - 1, 17);
+    ASSERT_EQ_INT(origin.x + LAYOUT_THEME_MENU_W - 1, 64);
+    ASSERT_TRUE(origin.y + LAYOUT_THEME_MENU_H - 1 <= LAYOUT_MIN_ROWS - 1);
+    ASSERT_TRUE(origin.x + LAYOUT_THEME_MENU_W - 1 <= LAYOUT_MIN_COLS - 1);
+    ASSERT_EQ_INT(LAYOUT_MIN_ROWS, 27);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+}
+
+static void test_layout_main_menu_theme_hint_fits(void)
+{
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL +
+                    (int)strlen("Press T to choose a theme") <=
+                LAYOUT_MENU_W - 1);
+    ASSERT_TRUE(LAYOUT_MENU_THEME_ROW < LAYOUT_MENU_H - 1);
+}
+
+static void test_layout_pause_back_hint_mentions_theme(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_PAUSE_BACK_HINT,
+                       "Press ESC or P to resume, T for theme") == 0);
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_BACK_HINT) <=
+                LAYOUT_PAUSE_MENU_W - 2 * LAYOUT_MENU_TEXT_COL);
+    ASSERT_EQ_INT(LAYOUT_PAUSE_MENU_H, 9);
+}
+
+static void test_layout_help_lines_name_theme_shortcut(void)
+{
+    ASSERT_TRUE(help_mentions("T theme"));
+    ASSERT_TRUE(help_mentions("P pause"));
+    ASSERT_TRUE(help_mentions("U undo"));
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        ASSERT_TRUE((int)strlen(layout_help_line(i)) <= layout_help_width());
+    }
+}
+
 static void test_layout_main_menu_continue_row_is_the_free_row(void)
 {
     ASSERT_EQ_INT(LAYOUT_MENU_CONTINUE_ROW, 2);
@@ -820,15 +934,16 @@ static void test_layout_main_menu_continue_row_is_the_free_row(void)
 
 static void test_layout_main_menu_is_not_resized_by_continue(void)
 {
-    ASSERT_EQ_INT(LAYOUT_MENU_H, 7);
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 8);
     ASSERT_EQ_INT(LAYOUT_MENU_W, 50);
     ASSERT_EQ_INT(LAYOUT_MENU_TITLE_ROW, 1);
     ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
     ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
-    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 6);
     ASSERT_POINT(layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
                                                LAYOUT_MENU_H, LAYOUT_MENU_W),
-                 10, 15);
+                 9, 15);
 }
 
 static void test_layout_main_menu_continue_hint_fits_window_width(void)
@@ -970,6 +1085,14 @@ int main(void)
     RUN_TEST(test_layout_victory_panel_rows_inside);
     RUN_TEST(test_layout_victory_texts_fit);
     RUN_TEST(test_layout_victory_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_theme_rows);
+    RUN_TEST(test_layout_theme_rows_follow_the_theme_count);
+    RUN_TEST(test_layout_theme_rows_inside);
+    RUN_TEST(test_layout_theme_texts_fit);
+    RUN_TEST(test_layout_theme_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_main_menu_theme_hint_fits);
+    RUN_TEST(test_layout_pause_back_hint_mentions_theme);
+    RUN_TEST(test_layout_help_lines_name_theme_shortcut);
     RUN_TEST(test_layout_main_menu_continue_row_is_the_free_row);
     RUN_TEST(test_layout_main_menu_is_not_resized_by_continue);
     RUN_TEST(test_layout_main_menu_continue_hint_fits_window_width);

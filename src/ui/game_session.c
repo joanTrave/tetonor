@@ -10,6 +10,8 @@ static void init_session_state(GameSession* session,
 {
     init_pause_state(&session->pause);
     init_victory_state(&session->victory);
+    session->theme = TETONOR_DEFAULT_PALETTE_THEME;
+    init_theme_menu(&session->theme_menu, session->theme);
     session->undo_notice     = false;
     session->linked_to_save  = linked_to_save;
     session->board_key_codes = *board_key_codes;
@@ -64,6 +66,12 @@ void note_game_session_saved(GameSession* session, PauseSaveNotice notice)
     }
 }
 
+void set_game_session_theme(GameSession* session, int theme)
+{
+    session->theme = is_palette_theme(theme) ? (PaletteTheme)theme
+                                             : TETONOR_DEFAULT_PALETTE_THEME;
+}
+
 void end_game_session(const GamePort* game_port, GameSession* session)
 {
     if (session->puzzle == NULL)
@@ -95,6 +103,13 @@ static bool progress_at_risk(const GamePort* game_port,
     return game_port->board_progress_would_be_lost_f(&session->board);
 }
 
+/* Opens the theme screen with the active theme marked and highlighted. */
+static void open_session_theme_screen(GameSession* session)
+{
+    init_theme_menu(&session->theme_menu, session->theme);
+    open_theme_screen(&session->pause);
+}
+
 /* Applies a board key while playing. Sets *outcome for ESC and for the RESTART
  * control; returns the action the pause logic wants performed now. */
 static GameAction handle_board_key(const GamePort* game_port,
@@ -110,6 +125,9 @@ static GameAction handle_board_key(const GamePort* game_port,
             break;
         case BOARD_COMMAND_PAUSE:
             open_pause_menu(&session->pause);
+            break;
+        case BOARD_COMMAND_THEME:
+            open_session_theme_screen(session);
             break;
         case BOARD_COMMAND_NEW_GAME:
             return request_game_action(&session->pause, GAME_ACTION_NEW_GAME,
@@ -144,18 +162,51 @@ static GameAction handle_pause_key(const GamePort* game_port,
     switch (session->pause.screen)
     {
         case PAUSE_SCREEN_MENU:
+        {
+            PauseMenuCommand command =
+                pause_menu_command_from_key(key, &session->menu_key_codes);
+            if (command == PAUSE_MENU_COMMAND_THEME)
+            {
+                init_theme_menu(&session->theme_menu, session->theme);
+            }
             return apply_pause_menu_command(
-                &session->pause,
-                pause_menu_command_from_key(key, &session->menu_key_codes),
-                progress_at_risk(game_port, session));
+                &session->pause, command, progress_at_risk(game_port, session));
+        }
         case PAUSE_SCREEN_PROMPT:
             return apply_prompt_command(
                 &session->pause,
                 prompt_command_from_key(key, &session->menu_key_codes));
+        case PAUSE_SCREEN_THEME:
         case PAUSE_SCREEN_PLAYING:
             break;
     }
     return GAME_ACTION_NONE;
+}
+
+/* Applies a key on the theme screen. Choosing another theme records it and
+ * reports it; the board, the history and the result are never touched. */
+static GameSessionOutcome handle_theme_key(GameSession* session, int key)
+{
+    apply_theme_menu_command(
+        &session->theme_menu,
+        theme_menu_command_from_key(key, &session->menu_key_codes));
+    switch (session->theme_menu.status)
+    {
+        case THEME_MENU_OPEN:
+            break;
+        case THEME_MENU_CHOSEN:
+            close_theme_screen(&session->pause);
+            if (session->theme_menu.selected != session->theme)
+            {
+                session->theme = session->theme_menu.selected;
+                return GAME_SESSION_THEME_CHANGED;
+            }
+            break;
+        case THEME_MENU_CANCELLED:
+            close_theme_screen(&session->pause);
+            break;
+    }
+    return GAME_SESSION_CONTINUE;
 }
 
 static GameAction handle_victory_key(GameSession* session, int key)
@@ -206,11 +257,15 @@ GameSessionOutcome handle_game_session_key(const GamePort* game_port,
 {
     bool was_paused            = is_game_paused(&session->pause);
     GameSessionOutcome outcome = GAME_SESSION_CONTINUE;
-    GameAction action;
-    session->undo_notice = false;
+    GameAction action          = GAME_ACTION_NONE;
+    session->undo_notice       = false;
     if (is_victory_shown(&session->victory))
     {
         action = handle_victory_key(session, key);
+    }
+    else if (is_theme_screen_shown(&session->pause))
+    {
+        outcome = handle_theme_key(session, key);
     }
     else if (was_paused)
     {

@@ -6,15 +6,17 @@
 
 #include "keys.h"
 #include "pause_menu.h"
+#include "theme_menu.h"
 #include "victory_menu.h"
 #include "../game/game_port.h"
 
 typedef enum
 {
     GAME_SESSION_CONTINUE,
-    GAME_SESSION_RESTARTED, /* a new puzzle: re-apply its palette styles */
-    GAME_SESSION_LEAVE,     /* back to the main menu; nothing recorded */
-    GAME_SESSION_SAVE       /* the caller captures and stores the game */
+    GAME_SESSION_RESTARTED,     /* a new puzzle */
+    GAME_SESSION_THEME_CHANGED, /* session.theme changed: apply and save it */
+    GAME_SESSION_LEAVE,         /* back to the main menu; nothing recorded */
+    GAME_SESSION_SAVE           /* the caller captures and stores the game */
 } GameSessionOutcome;
 
 /* Everything one running game owns; the board points into puzzle. */
@@ -25,6 +27,8 @@ typedef struct
     GameTimer timer;
     PauseState pause;
     VictoryState victory; /* shown once the game completes */
+    PaletteTheme theme;   /* active theme, recorded only */
+    ThemeMenu theme_menu; /* meaningful while the theme screen is shown */
     bool undo_notice;     /* set by an empty undo, cleared by the next key */
     bool linked_to_save;  /* this game is the saved one: completing it
                              discards the save */
@@ -60,14 +64,18 @@ bool capture_game_session(const GamePort* game_port, const GameSession* session,
  * game is now stored, so the session is linked to the save. */
 void note_game_session_saved(GameSession* session, PauseSaveNotice notice);
 
+/* Records theme as the session's active theme (the default when it is not a
+ * theme). Touches nothing else; the caller applies the styles. */
+void set_game_session_theme(GameSession* session, int theme);
+
 /* Frees the puzzle through the port and sets it to NULL; calling it again
  * does nothing. */
 void end_game_session(const GamePort* game_port, GameSession* session);
 
-/* Applies one key on the current screen (game, pause menu, prompt or victory
- * screen). The timer is paused while the menu or a prompt is shown. Returns
- * GAME_SESSION_SAVE when the pause menu asks to save; the timer stays paused.
- */
+/* Applies one key on the current screen (game, pause menu, theme screen, prompt
+ * or victory screen). The timer is paused while the menu, the theme screen or a
+ * prompt is shown. Returns GAME_SESSION_SAVE when the pause menu asks to save;
+ * the timer stays paused. */
 GameSessionOutcome handle_game_session_key(const GamePort* game_port,
                                            GameSession* session, int key,
                                            time_t now);

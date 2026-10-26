@@ -17,6 +17,7 @@ static int required_color_count(PaletteColor color)
         case PALETTE_COLOR_DARK_GREY:
         case PALETTE_COLOR_BRIGHT_BLUE:
         case PALETTE_COLOR_BRIGHT_GREEN:
+        case PALETTE_COLOR_BRIGHT_WHITE:
             return TETONOR_16_COLOR_COUNT;
     }
     return TETONOR_16_COLOR_COUNT;

@@ -5,24 +5,22 @@
 
 #define TEXT_FILE_TMP_SUFFIX ".tmp"
 
-TextFileReadResult read_text_file(const char* path, char* text,
-                                  size_t max_length, size_t* length)
+TextFileReadResult read_text_file(const char* path, char* out, size_t capacity,
+                                  size_t* length)
 {
+    *length    = 0;
     FILE* file = fopen(path, "rb");
     if (file == NULL)
     {
         return TEXT_FILE_READ_MISSING;
     }
-    /* One byte more than the maximum tells an oversized file from a full one.
-     */
-    size_t read = fread(text, 1, max_length + 1, file);
+    *length     = fread(out, 1, capacity, file);
     bool failed = ferror(file) != 0;
     fclose(file);
-    if (failed || read > max_length)
+    if (failed || *length >= capacity)
     {
         return TEXT_FILE_READ_FAILED;
     }
-    *length = read;
     return TEXT_FILE_READ_OK;
 }
 
@@ -46,7 +44,7 @@ static bool replace_file(const char* temporary, const char* path)
            (remove(path) == 0 && rename(temporary, path) == 0);
 }
 
-bool write_text_file_atomically(const char* path, const char* text)
+bool write_text_file_atomic(const char* path, const char* text)
 {
     if (strlen(path) >= TETONOR_TEXT_FILE_PATH_MAX)
     {

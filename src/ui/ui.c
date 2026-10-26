@@ -16,7 +16,8 @@ static void save_session(const GamePort* game_port, GameSession* session,
                          SavedGameStore* saved_game_store);
 
 int ui_run(const GamePort* game_port, StatsStore* stats_store,
-           SavedGameStore* saved_game_store, const SavedGame* resume)
+           ConfigStore* config_store, SavedGameStore* saved_game_store,
+           const SavedGame* resume)
 {
     GameSession session;
     BoardKeyCodes board_codes = board_key_codes();
@@ -32,7 +33,7 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
     {
         return EXIT_FAILURE;
     }
-    apply_palette_styles(&session.board.palette);
+    set_game_session_theme(&session, config_store->theme);
     ReadTimeoutWatch watch;
     init_read_timeout_watch(&watch);
 
@@ -61,9 +62,9 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
             {
                 save_session(game_port, &session, saved_game_store);
             }
-            if (outcome == GAME_SESSION_RESTARTED)
+            if (outcome == GAME_SESSION_THEME_CHANGED)
             {
-                apply_palette_styles(&session.board.palette);
+                ui_apply_theme(config_store, session.theme);
             }
         }
         /* A game completes once: it is recorded then and the victory screen
@@ -141,6 +142,10 @@ static void draw_board(const GameSession* session)
     {
         print_victory_screen(&session->victory);
     }
+    else if (is_theme_screen_shown(&session->pause))
+    {
+        print_theme_screen(&session->theme_menu);
+    }
     else if (is_game_paused(&session->pause))
     {
         print_pause_screen(&session->pause, session->timer.elapsed_seconds);
@@ -151,6 +156,13 @@ static void draw_board(const GameSession* session)
                      session->timer.elapsed_seconds);
     }
     refresh();
+}
+
+void ui_apply_theme(ConfigStore* config_store, int theme)
+{
+    /* A failed save is ignored: the theme still applies for the session. */
+    set_config_store_theme(config_store, theme);
+    apply_theme_styles(config_store->theme);
 }
 
 static PauseSaveNotice save_notice(SavedGameSaveResult result)

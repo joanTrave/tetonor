@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "pause_menu.h"
+#include "theme_menu.h"
 #include "victory_menu.h"
 #include "../game/game_port.h"
 
@@ -21,5 +22,9 @@ void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds);
 /* Draws the victory screen: the summary and its two options; the board and the
  * timer are hidden. */
 void print_victory_screen(const VictoryState* victory);
+
+/* Draws the theme screen: one option per theme, the active one marked; the
+ * board and the timer are hidden. */
+void print_theme_screen(const ThemeMenu* menu);
 
 #endif

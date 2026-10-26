@@ -5,9 +5,11 @@
 
 SavedGameLoadResult load_saved_game_file(const char* path, SavedGame* game)
 {
+    /* One byte more than the maximum tells an oversized file from a full one.
+     */
     char text[TETONOR_SAVED_GAME_TEXT_MAX + 1];
     size_t length = 0;
-    switch (read_text_file(path, text, TETONOR_SAVED_GAME_TEXT_MAX, &length))
+    switch (read_text_file(path, text, sizeof text, &length))
     {
         case TEXT_FILE_READ_OK:
             break;
@@ -27,7 +29,7 @@ bool save_saved_game_file(const char* path, const SavedGame* game)
     {
         return false;
     }
-    return write_text_file_atomically(path, text);
+    return write_text_file_atomic(path, text);
 }
 
 SavedGameLoadResult init_saved_game_store(SavedGameStore* store,
