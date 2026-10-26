@@ -5,6 +5,7 @@
 #include "menu.h"
 #include "pause_menu.h"
 #include "stats_menu.h"
+#include "theme_menu.h"
 #include "victory_menu.h"
 #include "../game/game_port.h"
 
@@ -28,6 +29,8 @@ enum
     TETONOR_KEY_STATISTICS_UPPER = 'S',
     TETONOR_KEY_PAUSE            = 'p',
     TETONOR_KEY_PAUSE_UPPER      = 'P',
+    TETONOR_KEY_THEME            = 't',
+    TETONOR_KEY_THEME_UPPER      = 'T',
     TETONOR_KEY_NEW_GAME         = 'n',
     TETONOR_KEY_NEW_GAME_UPPER   = 'N',
     TETONOR_KEY_MAIN_MENU        = 'm',
@@ -60,10 +63,11 @@ typedef enum
     BOARD_COMMAND_NONE, /* key ignored */
     BOARD_COMMAND_EXIT,
     BOARD_COMMAND_INPUT,
-    BOARD_COMMAND_UNDO,     /* revert the latest move */
-    BOARD_COMMAND_PAUSE,    /* open the pause menu */
-    BOARD_COMMAND_NEW_GAME, /* start another game at the same difficulty */
-    BOARD_COMMAND_MAIN_MENU /* leave for the main menu */
+    BOARD_COMMAND_UNDO,      /* revert the latest move */
+    BOARD_COMMAND_PAUSE,     /* open the pause menu */
+    BOARD_COMMAND_NEW_GAME,  /* start another game at the same difficulty */
+    BOARD_COMMAND_MAIN_MENU, /* leave for the main menu */
+    BOARD_COMMAND_THEME      /* open the theme screen */
 } BoardCommandKind;
 
 typedef struct
@@ -106,6 +110,11 @@ VictoryMenuCommand victory_menu_command_from_key(int key,
 
 /* Maps a key to a board command. Unknown keys give BOARD_COMMAND_NONE. */
 BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes);
+
+/* Maps a key to a theme-screen command. Unknown keys give
+ * THEME_MENU_COMMAND_NONE. */
+ThemeMenuCommand theme_menu_command_from_key(int key,
+                                             const MenuKeyCodes* key_codes);
 
 /* Maps a key to a statistics-screen command. Unknown keys give
  * STATS_MENU_COMMAND_NONE. */

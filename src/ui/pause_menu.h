@@ -9,7 +9,8 @@ typedef enum
 {
     PAUSE_SCREEN_PLAYING, /* not paused: the board takes the keys */
     PAUSE_SCREEN_MENU,
-    PAUSE_SCREEN_PROMPT /* asking before progress is lost */
+    PAUSE_SCREEN_PROMPT, /* asking before progress is lost */
+    PAUSE_SCREEN_THEME   /* choosing a theme; cancel_to says where from */
 } PauseScreen;
 
 typedef enum
@@ -32,7 +33,8 @@ typedef enum
     PAUSE_MENU_COMMAND_UP,
     PAUSE_MENU_COMMAND_DOWN,
     PAUSE_MENU_COMMAND_SELECT,
-    PAUSE_MENU_COMMAND_RESUME
+    PAUSE_MENU_COMMAND_RESUME,
+    PAUSE_MENU_COMMAND_THEME /* open the theme screen */
 } PauseMenuCommand;
 
 typedef enum
@@ -51,7 +53,8 @@ typedef struct
     PauseOption selected;  /* highlighted pause-menu option */
     PromptOption answer;   /* highlighted prompt option */
     GameAction pending;    /* what the prompt asks about; NONE otherwise */
-    PauseScreen cancel_to; /* PLAYING or MENU: where No and ESC return */
+    PauseScreen cancel_to; /* PLAYING or MENU: where No, ESC and the theme
+                              screen return */
 } PauseState;
 
 /* Playing, Resume highlighted, prompt answer No, nothing pending (S-1). */
@@ -63,6 +66,17 @@ bool is_game_paused(const PauseState* state);
 /* Opens the menu with Resume highlighted; ignored unless playing (S-2, S-3). */
 void open_pause_menu(PauseState* state);
 
+/* Shows the theme screen, which returns to where it was opened: the game when
+ * playing, the pause menu (its selection kept) when the menu is shown. Ignored
+ * during a prompt or when already shown. */
+void open_theme_screen(PauseState* state);
+
+/* Leaves the theme screen for where it was opened. Ignored unless shown. */
+void close_theme_screen(PauseState* state);
+
+/* True whenever the theme screen is shown. */
+bool is_theme_screen_shown(const PauseState* state);
+
 /* Asks to start a new game or leave. Without risk the action is returned to
  * perform at once; with risk a prompt opens on No and NONE is returned.
  * Ignored, returning NONE, for GAME_ACTION_NONE or unless playing (S-4..S-6).
@@ -72,7 +86,8 @@ GameAction request_game_action(PauseState* state, GameAction action,
 
 /* Applies one pause-menu command: UP and DOWN stop at the ends, RESUME and
  * SELECT on Resume return to the game, SELECT on Abandon returns
- * GAME_ACTION_MAIN_MENU, or opens a prompt when progress is at risk. Ignored
+ * GAME_ACTION_MAIN_MENU, or opens a prompt when progress is at risk, and THEME
+ * opens the theme screen (returning NONE). Ignored
  * unless the menu is shown (S-7..S-11). */
 GameAction apply_pause_menu_command(PauseState* state, PauseMenuCommand command,
                                     bool progress_at_risk);

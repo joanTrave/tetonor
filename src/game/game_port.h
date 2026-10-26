@@ -6,6 +6,7 @@
 #include "board.h"
 #include "game_timer.h"
 #include "number_generation.h"
+#include "palette.h"
 #include "statistics.h"
 
 #define TETONOR_DEFAULT_DIFFICULTY DIFFICULTY_MEDIUM

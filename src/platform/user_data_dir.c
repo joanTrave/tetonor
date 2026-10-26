@@ -122,7 +122,8 @@ static bool append_segment(const PlatformLayout* layout, const char* segment,
 }
 
 static bool build_path(UserDataPlatform platform, const char* base_dir,
-                       bool create, char* out, size_t size)
+                       const char* file_name, bool create, char* out,
+                       size_t size)
 {
     const PlatformLayout* layout = platform_layout(platform);
     size_t used                  = 0;
@@ -138,20 +139,21 @@ static bool build_path(UserDataPlatform platform, const char* base_dir,
             return false;
         }
     }
-    return append_segment(layout, TETONOR_STATS_FILE_NAME, false, out, size,
-                          &used);
+    return append_segment(layout, file_name, false, out, size, &used);
 }
 
 static bool build_or_empty(UserDataPlatform platform, const char* base_dir,
-                           bool create, char* out, size_t size)
+                           const char* file_name, bool create, char* out,
+                           size_t size)
 {
     if (out == NULL || size == 0)
     {
         return false;
     }
     out[0] = '\0';
-    if (base_dir == NULL || base_dir[0] == '\0' ||
-        !build_path(platform, base_dir, create, out, size))
+    if (base_dir == NULL || base_dir[0] == '\0' || file_name == NULL ||
+        file_name[0] == '\0' ||
+        !build_path(platform, base_dir, file_name, create, out, size))
     {
         out[0] = '\0';
         return false;
@@ -159,14 +161,29 @@ static bool build_or_empty(UserDataPlatform platform, const char* base_dir,
     return true;
 }
 
+bool build_user_data_file_path(UserDataPlatform platform, const char* base_dir,
+                               const char* file_name, char* out, size_t size)
+{
+    return build_or_empty(platform, base_dir, file_name, false, out, size);
+}
+
+bool prepare_user_data_file_path(UserDataPlatform platform,
+                                 const char* base_dir, const char* file_name,
+                                 char* out, size_t size)
+{
+    return build_or_empty(platform, base_dir, file_name, true, out, size);
+}
+
 bool build_stats_file_path(UserDataPlatform platform, const char* base_dir,
                            char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, false, out, size);
+    return build_user_data_file_path(platform, base_dir,
+                                     TETONOR_STATS_FILE_NAME, out, size);
 }
 
 bool prepare_stats_file_path(UserDataPlatform platform, const char* base_dir,
                              char* out, size_t size)
 {
-    return build_or_empty(platform, base_dir, true, out, size);
+    return prepare_user_data_file_path(platform, base_dir,
+                                       TETONOR_STATS_FILE_NAME, out, size);
 }

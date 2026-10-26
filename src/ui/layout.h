@@ -54,12 +54,13 @@
 #define LAYOUT_MIN_COLS 80
 /* printf format: columns, then rows. */
 #define LAYOUT_ENLARGE_FORMAT "Please enlarge the terminal to at least %dx%d"
-#define LAYOUT_MENU_H 7
+#define LAYOUT_MENU_H 8
 #define LAYOUT_MENU_W 50
 #define LAYOUT_MENU_TITLE_ROW 1
 #define LAYOUT_MENU_START_ROW 3
 #define LAYOUT_MENU_STATS_ROW 4
-#define LAYOUT_MENU_EXIT_ROW 5
+#define LAYOUT_MENU_THEME_ROW 5
+#define LAYOUT_MENU_EXIT_ROW 6
 #define LAYOUT_MENU_TEXT_COL 2
 #define LAYOUT_DIFFICULTY_MENU_H 10
 #define LAYOUT_DIFFICULTY_MENU_W LAYOUT_MENU_W
@@ -76,7 +77,17 @@
 #define LAYOUT_PAUSE_BACK_ROW 7
 #define LAYOUT_PAUSE_TITLE "Paused"
 #define LAYOUT_PAUSE_CHOOSE_HINT "UP/DOWN to choose, SPACE or ENTER to select"
-#define LAYOUT_PAUSE_BACK_HINT "Press ESC or P to resume"
+#define LAYOUT_PAUSE_BACK_HINT "Press ESC or P to resume, T for theme"
+#define LAYOUT_THEME_MENU_W LAYOUT_MENU_W
+#define LAYOUT_THEME_TITLE_ROW 1
+#define LAYOUT_THEME_FIRST_OPTION_ROW 3
+#define LAYOUT_THEME_CHOOSE_ROW                                                \
+    (LAYOUT_THEME_FIRST_OPTION_ROW + PALETTE_THEME_COUNT + 1)
+#define LAYOUT_THEME_BACK_ROW (LAYOUT_THEME_CHOOSE_ROW + 1)
+#define LAYOUT_THEME_MENU_H (LAYOUT_THEME_BACK_ROW + 2)
+#define LAYOUT_THEME_TITLE "Choose theme"
+#define LAYOUT_THEME_CHOOSE_HINT LAYOUT_PAUSE_CHOOSE_HINT
+#define LAYOUT_THEME_BACK_HINT "Press ESC or T to go back"
 #define LAYOUT_PROMPT_H 10
 #define LAYOUT_PROMPT_W LAYOUT_MENU_W
 #define LAYOUT_PROMPT_TITLE_ROW 1
@@ -165,6 +176,9 @@ LayoutPoint layout_help_line_origin(int index);
 
 /* Columns available to a help line: from LAYOUT_ORIGIN_X to the button gap. */
 int layout_help_width(void);
+
+/* Window row of a theme's option line on the theme screen. */
+int layout_theme_option_row(int theme);
 
 /* Window row of a pause-menu option / a prompt option. */
 int layout_pause_option_row(int option);

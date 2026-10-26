@@ -54,7 +54,6 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     board->cursor = find_editable_slot(board, 0, 1);
     board->focus  = board->cursor != TETONOR_NO_CURSOR ? BOARD_FOCUS_SLOT
                                                        : BOARD_FOCUS_GROUP;
-    init_palette(&board->palette);
     clear_move_history(&board->history);
     board->move_count = 0;
     refresh_slot_usages(board);

@@ -12,7 +12,7 @@ static const int group_field_offsets[] = {SMALLER_OFFSET, OPERATION_OFFSET,
 
 static const char* const help_lines[LAYOUT_HELP_LINE_COUNT] = {
     "Arrows move   0-9 type   + x * operation   BACKSPACE delete",
-    "ENTER/SPACE press button   U undo   P pause",
+    "ENTER/SPACE press button   U undo   P pause   T theme",
     "N new game   M main menu   ESC leave without asking",
 };
 
@@ -169,4 +169,9 @@ int layout_stats_row(int difficulty)
 bool layout_fits(int rows, int cols)
 {
     return rows >= LAYOUT_MIN_ROWS && cols >= LAYOUT_MIN_COLS;
+}
+
+int layout_theme_option_row(int theme)
+{
+    return LAYOUT_THEME_FIRST_OPTION_ROW + theme;
 }

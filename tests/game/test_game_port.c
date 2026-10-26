@@ -361,21 +361,6 @@ static void test_game_port_board_session_without_groups_stays_pending(void)
     ASSERT_EQ_INT(result, BOARD_RESULT_PENDING);
 }
 
-static bool palettes_match(const Palette* first, const Palette* second)
-{
-    for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
-    {
-        if (first->foregrounds[role].color != second->foregrounds[role].color ||
-            first->foregrounds[role].fallback !=
-                second->foregrounds[role].fallback)
-        {
-            return false;
-        }
-    }
-    return first->background.color == second->background.color &&
-           first->background.fallback == second->background.fallback;
-}
-
 /* Field by field: padding bytes of a Board are unspecified. */
 static bool boards_match(const Board* first, const Board* second)
 {
@@ -396,8 +381,7 @@ static bool boards_match(const Board* first, const Board* second)
             return false;
         }
     }
-    return groups_match(first->groups, second->groups) &&
-           palettes_match(&first->palette, &second->palette);
+    return groups_match(first->groups, second->groups);
 }
 
 /* True when board is exactly what init_board makes over its own puzzle. */
@@ -453,11 +437,7 @@ static void mess_up_board(Board* board)
         fixture_groups[TEST_MESSY_GROUP_CELL];
     board->group_cursor = TEST_MESSY_GROUP_CELL;
     board->group_field  = GROUP_FIELD_GREATER;
-    board->palette.background.color =
-        board->palette.background.color == PALETTE_COLOR_RED
-            ? PALETTE_COLOR_BLUE
-            : PALETTE_COLOR_RED;
-    board->focus = BOARD_FOCUS_RESTART;
+    board->focus        = BOARD_FOCUS_RESTART;
 }
 
 static void test_restart_game_replaces_puzzle_and_frees_old_once(void)

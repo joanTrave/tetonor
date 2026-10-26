@@ -9,6 +9,7 @@
 #define TETONOR_COLOR_DARK_GREY 8
 #define TETONOR_COLOR_BRIGHT_BLUE (COLOR_BLUE + TETONOR_BRIGHT_OFFSET)
 #define TETONOR_COLOR_BRIGHT_GREEN (COLOR_GREEN + TETONOR_BRIGHT_OFFSET)
+#define TETONOR_COLOR_BRIGHT_WHITE (COLOR_WHITE + TETONOR_BRIGHT_OFFSET)
 
 static short curses_color(PaletteColor color)
 {
@@ -36,6 +37,8 @@ static short curses_color(PaletteColor color)
             return TETONOR_COLOR_BRIGHT_BLUE;
         case PALETTE_COLOR_BRIGHT_GREEN:
             return TETONOR_COLOR_BRIGHT_GREEN;
+        case PALETTE_COLOR_BRIGHT_WHITE:
+            return TETONOR_COLOR_BRIGHT_WHITE;
     }
     return COLOR_WHITE;
 }
@@ -70,6 +73,22 @@ void apply_palette_styles(const Palette* palette)
         init_pair((short)(role + TETONOR_FIRST_COLOR_PAIR),
                   curses_color_of(palette->foregrounds[role]), background);
     }
+    /* Text drawn with no colour of its own takes the theme's text and
+     * background, so every screen follows the theme. */
+    bkgd(' ' | palette_role_attr(PALETTE_ROLE_TEXT));
+    clearok(curscr, TRUE);
+}
+
+void apply_theme_styles(int theme)
+{
+    Palette palette;
+    init_theme_palette(&palette, theme);
+    apply_palette_styles(&palette);
+}
+
+void apply_window_style(WINDOW* win)
+{
+    wbkgd(win, ' ' | palette_role_attr(PALETTE_ROLE_TEXT));
 }
 
 static attr_t monochrome_attr(PaletteRole role)
@@ -88,6 +107,7 @@ static attr_t monochrome_attr(PaletteRole role)
             return A_BOLD | A_UNDERLINE | A_DIM;
         case PALETTE_ROLE_USED_TWICE_TYPED:
             return A_UNDERLINE;
+        case PALETTE_ROLE_TEXT:
         case PALETTE_ROLE_COUNT:
             break;
     }
