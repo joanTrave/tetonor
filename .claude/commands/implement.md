@@ -8,6 +8,11 @@ have not seen that approval in this conversation, ask the human to confirm it be
 anything; do not infer approval from the mere existence of the plan files. Preparing the worktree
 does not count as approval.
 
+Every message to the human in this command (status, relayed errors, the second approval gate and
+the close outcome) uses the task's conversation language, read from the mission spec's
+`CONVERSATION_LANGUAGE` bullet per `CLAUDE.md` § "Conversation language". Script output, outcome
+names, files, commits and the pull request stay in English.
+
 Preconditions — stop and tell the human what's missing rather than fabricating it:
 - `.claude/tasks/<task-id>/plan/plan.md` must exist (Architect's implementation + test plan).
 - `.claude/tasks/<task-id>/plan/architecture-gate.md` must exist.

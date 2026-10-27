@@ -23,4 +23,8 @@ Tester automatically — per `CLAUDE.md`, this is an approval gate: the human re
 `architecture-gate.md` and decides whether to continue, and the pipeline advances only when they
 say so.
 
+Address the human (the artifact paths and the approval-gate prompt) in the task's conversation
+language, read from the mission spec's `CONVERSATION_LANGUAGE` bullet per
+`CLAUDE.md` § "Conversation language". Both artifacts stay in English.
+
 $ARGUMENTS

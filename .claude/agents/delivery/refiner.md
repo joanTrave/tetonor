@@ -24,6 +24,9 @@ consume, automating what was previously a manual task-to-prompt step.
   issue to resolve its requirements. Otherwise, ask the human to paste the task text.
 - Determine the task identifier per the mission-spec skill: the `TETO-NNN` key (normalised to three
   digits) for GitHub issues, the Jira key verbatim for Jira, otherwise a kebab-case slug.
+- Determine the task's conversation language and record it as the `CONVERSATION_LANGUAGE` bullet
+  under `# Variables`, per `CLAUDE.md` § "Conversation language". The spec itself stays entirely
+  in English.
 - Read the repository only as needed to resolve technical context referenced by the task (existing
   conventions, affected modules, related prior art) — cite every path relied on inside the
   `# Problem`/`# Solution` sections of the resulting spec.
@@ -32,7 +35,8 @@ consume, automating what was previously a manual task-to-prompt step.
 - Record every requirement not literally present in the supplied task as an explicit
   `ASSUMPTION:` bullet under `# Assumptions`, per the mission-spec skill's rule. Omit the section
   when there are no assumptions.
-- State which files were read and why each was necessary before finishing.
+- State which files were read and why each was necessary, and the conversation language recorded,
+  before finishing. The dispatching session relays this report to the human in that language.
 
 ## Required skills
 
