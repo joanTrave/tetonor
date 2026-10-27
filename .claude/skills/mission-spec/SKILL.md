@@ -34,6 +34,7 @@ top-level `#` sections, in this order:
 
 # Variables
 - `PLAN_DIR: .claude/tasks/<task-id>/plan/`
+- `CONVERSATION_LANGUAGE: <English name of the language, e.g. Spanish>`
 - `<NAME>: <value>`            ← one bullet per concrete constant the task hinges on
 
 [# Assumptions                  ← OPTIONAL, see rule below; only when assumptions exist]
@@ -84,6 +85,9 @@ See CLAUDE.md for the workflow definition.
   plan. Those belong to the Architect, not the Refiner.
 - **`PLAN_DIR` convention.** Always `.claude/tasks/<task-id>/plan/` — this is the single
   plan-artifact-path convention used throughout the factory; do not invent an alternative.
+- **`CONVERSATION_LANGUAGE` convention.** Always present: the English name of the task's
+  conversation language, determined per `CLAUDE.md` § "Conversation language". It is metadata for
+  the session that talks to the human and never puts non-English text into the spec.
 - **GitHub issues are the primary source.** Tasks live as issues in this repository's GitHub
   tracker (`joanTrave/tetonor`), titled `TETO-NNN — <summary>`; ingest them per
   *GitHub issue ingestion* below.

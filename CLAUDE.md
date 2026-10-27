@@ -39,6 +39,17 @@ When starting work on a new task, follow this pipeline. Each agent is invoked wi
 
 Do not skip either approval gate, and do not let the developer commit before the second approval is given.
 
+## Conversation language
+
+Messages to the human use the task's *conversation language*; every file the workflow generates is written in English.
+
+- **Source.** In `/refine-task`, the conversation language is the language of the supplied task text. For a `TETO-NNN` key, GitHub issue, Jira key or URL it is the language of the fetched task content, or of the human's own message when that is unclear. When neither identifies a language (empty, mixed or ambiguous input), it defaults to English. The `refiner` records it as the `CONVERSATION_LANGUAGE` bullet of the mission spec's `# Variables`, using the language's English name (for example `Spanish`).
+- **Persistence.** Later commands for the same task (`/architect-plan`, `/implement`, `/ship`) and both approval gates read `CONVERSATION_LANGUAGE` from `.claude/tasks/<task-id>/specs/<task-id>.md`. If the bullet is missing, they use the language of the human's message when it contains prose; otherwise the language defaults to English.
+- **Human override.** An explicit request from the human for another language takes precedence over the language detected from the task text or read from the spec, in every command (including `/refine-task` itself, before any spec exists) and at both approval gates, for the rest of the session. When a spec is written under an override, the `refiner` records the requested language as `CONVERSATION_LANGUAGE`.
+- **What is translated.** Questions, clarifications, warnings, status updates, approval-gate prompts and final reports, including the "files read and why" statement. The session that talks to the human applies this rule, also when relaying an agent's report; prompts and reports exchanged between agents stay in English.
+- **What is quoted verbatim.** File paths, commands and their output, identifiers, template section headings, marker keywords (`ASSUMPTION:`, `DECISION`, `RISK`), status values and outcome names.
+- **Files stay in English.** Mission specs, plans, architecture gate reports, reviews (`review.json`, `review.md`) and any other file under `.claude/tasks/`; code, code comments, tests, configuration and documentation; commit messages, branch names and pull request titles and descriptions. Task content in another language is translated into English when it is written to a file (see `.claude/skills/mission-spec/SKILL.md`).
+
 ## Artifact locations
 
 | Artifact | Path | Produced by |
