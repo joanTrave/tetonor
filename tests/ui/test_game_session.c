@@ -2896,6 +2896,36 @@ test_a_continued_game_completes_once_with_restored_moves_and_time(void)
         check_continued_game_completes_once_with_the_summed_summary);
 }
 
+/* A slot above the given 3 after it, then (1 + 9) in a cell whose target is
+ * 3: two conflicts, none of which may touch the timer, the pause state or the
+ * verdict. */
+static void
+check_conflicting_entries_keep_timer_and_pause(const GamePort* game_port,
+                                               GameSession* session)
+{
+    const int keys[] = {TEST_TYPED_DIGIT, TEST_UP_KEY, '1', TEST_RIGHT_KEY, '+',
+                        TEST_RIGHT_KEY,   '9'};
+    GameTimer timer_before = session->timer;
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME),
+                      GAME_SESSION_CONTINUE);
+    }
+    ASSERT_TRUE(session->board.conflicts.slots[TEST_FIRST_SLOT]);
+    ASSERT_TRUE(group_has_conflict(&session->board.conflicts, 0));
+    ASSERT_EQ_INT(session->board.conflicts.count, 2);
+    ASSERT_TRUE(timers_match(&timer_before, &session->timer));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_PENDING);
+    ASSERT_FALSE(session->undo_notice);
+}
+
+static void
+test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause(void)
+{
+    run_session_test(check_conflicting_entries_keep_timer_and_pause);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_game_session_starts_playing);
@@ -2986,5 +3016,7 @@ int main(void)
     RUN_TEST(test_handle_game_session_key_save_request_with_progress_no_prompt);
     RUN_TEST(test_init_game_session_from_save_ignores_the_time_since_the_save);
     RUN_TEST(test_a_continued_game_completes_once_with_restored_moves_and_time);
+    RUN_TEST(
+        test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause);
     return test_harness_result();
 }

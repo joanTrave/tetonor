@@ -17,4 +17,8 @@ PaletteColor resolve_palette_color(PaletteEntry entry, int color_count);
  * number keeps the default attribute (given, unused). */
 bool strip_slot_role(bool editable, SlotUsage usage, PaletteRole* role);
 
+/* Role used to draw a group box: PALETTE_ROLE_CONFLICT when in_conflict,
+ * else PALETTE_ROLE_ENTERED. */
+PaletteRole group_field_role(bool in_conflict);
+
 #endif

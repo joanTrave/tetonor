@@ -27,7 +27,7 @@ static bool all_groups_filled(const Board* board);
 static void submit_answer(Board* board);
 static void judge_board(Board* board);
 static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
-static void refresh_slot_usages(Board* board);
+static void refresh_derived_entries(Board* board);
 static void take_snapshot(const Board* board, BoardSnapshot* snapshot);
 static void restore_snapshot(Board* board, const BoardSnapshot* snapshot);
 static bool same_operand_group(const OperandGroup* a, const OperandGroup* b);
@@ -56,7 +56,7 @@ void init_board(Board* board, const NumberGeneration* puzzle)
                                                        : BOARD_FOCUS_GROUP;
     clear_move_history(&board->history);
     board->move_count = 0;
-    refresh_slot_usages(board);
+    refresh_derived_entries(board);
 }
 
 void restore_board(Board* board, const NumberGeneration* puzzle,
@@ -65,7 +65,7 @@ void restore_board(Board* board, const NumberGeneration* puzzle,
     init_board(board, puzzle);
     restore_snapshot(board, entries);
     board->move_count = move_count;
-    refresh_slot_usages(board);
+    refresh_derived_entries(board);
 }
 
 /* The inputs a locked board still takes: movement, and ACTIVATE anywhere but
@@ -118,7 +118,7 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
         push_move(&board->history, &before);
         count_move(board);
     }
-    refresh_slot_usages(board);
+    refresh_derived_entries(board);
     return event;
 }
 
@@ -131,7 +131,7 @@ bool undo_board_move(Board* board)
     BoardSnapshot snapshot;
     pop_move(&board->history, &snapshot);
     restore_snapshot(board, &snapshot);
-    refresh_slot_usages(board);
+    refresh_derived_entries(board);
     return true;
 }
 
@@ -471,11 +471,14 @@ static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT])
     }
 }
 
-static void refresh_slot_usages(Board* board)
+/* Slot usages and conflicts are derived from one strip. */
+static void refresh_derived_entries(Board* board)
 {
     int strip[TETONOR_CELL_COUNT];
     build_strip(board, strip);
     compute_slot_usages(strip, board->groups, board->slot_usages);
+    find_board_conflicts(board->puzzle, strip, board->groups,
+                         &board->conflicts);
 }
 
 static void judge_board(Board* board)

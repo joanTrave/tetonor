@@ -6,6 +6,7 @@
 #include "../test_harness.h"
 #include "fixture_puzzle.h"
 #include "../../src/game/board.h"
+#include "../../src/game/conflict_check.h"
 
 #define TEST_FIRST_SLOT 2
 #define TEST_SECOND_SLOT 5
@@ -4421,6 +4422,344 @@ static void test_restore_board_with_empty_entries_and_no_moves(void)
     }
 }
 
+#define TEST_GROUP_MOVE_COUNT 3   /* smaller, operation, greater */
+#define TEST_OUT_OF_ORDER_VALUE 9 /* above the given 3 after hidden slot 2 */
+#define TEST_GARBAGE_BYTE 0xA5
+
+/* Target of cell 0 is 3: 1 + 3 is 4. */
+static const OperandGroup conflicting_group = {1, GROUP_OPERATION_ADD, 3};
+
+static void strip_of_board(const Board* board, int strip[TETONOR_CELL_COUNT])
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        strip[i] = board->slots[i].editable ? board->slots[i].value
+                                            : board->puzzle->available_array[i];
+    }
+}
+
+static bool conflicts_equal(const BoardConflicts* first,
+                            const BoardConflicts* second)
+{
+    if (first->count != second->count)
+    {
+        return false;
+    }
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (first->slots[i] != second->slots[i])
+        {
+            return false;
+        }
+        for (int field = 0; field < TETONOR_GROUP_FIELD_COUNT; field++)
+        {
+            if (first->fields[i][field] != second->fields[i][field])
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool conflicts_follow_entries(const Board* board)
+{
+    int strip[TETONOR_CELL_COUNT];
+    BoardConflicts expected;
+    strip_of_board(board, strip);
+    find_board_conflicts(board->puzzle, strip, board->groups, &expected);
+    return conflicts_equal(&board->conflicts, &expected);
+}
+
+static bool no_box_flagged(const Board* board)
+{
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (board->conflicts.slots[i] ||
+            group_has_conflict(&board->conflicts, i))
+        {
+            return false;
+        }
+    }
+    return board->conflicts.count == 0;
+}
+
+static void test_init_board_has_no_conflicts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    build_fixture_puzzle(&puzzle, fixture_hidden, TEST_EDITABLE_COUNT);
+    memset(&board, TEST_GARBAGE_BYTE, sizeof board);
+    init_board(&board, &puzzle);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_init_board_without_slots_has_no_conflicts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_init_board_clears_the_conflicts_of_the_previous_game(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    enter_group_in_cell(&board, 0, &conflicting_group);
+    ASSERT_TRUE(board.conflicts.count > 0);
+    init_board(&board, &puzzle);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_apply_board_input_conflicting_entry_is_accepted(void)
+{
+    NumberGeneration puzzle;
+    Board conflicting;
+    Board valid;
+    start_default_board(&puzzle, &conflicting);
+    init_board(&valid, &puzzle);
+    enter_group_in_cell(&conflicting, 0, &conflicting_group);
+    enter_group_in_cell(&valid, 0, &fixture_groups[0]);
+    ASSERT_EQ_INT(conflicting.groups[0].smaller, conflicting_group.smaller);
+    ASSERT_EQ_INT(conflicting.groups[0].operation, conflicting_group.operation);
+    ASSERT_EQ_INT(conflicting.groups[0].greater, conflicting_group.greater);
+    ASSERT_EQ_INT(conflicting.conflicts.count, 1);
+    ASSERT_EQ_INT(valid.conflicts.count, 0);
+    ASSERT_EQ_INT(conflicting.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(conflicting.cursor, valid.cursor);
+    ASSERT_EQ_INT(conflicting.group_cursor, valid.group_cursor);
+    ASSERT_EQ_INT(conflicting.group_field, valid.group_field);
+    ASSERT_EQ_INT(conflicting.focus, valid.focus);
+    ASSERT_EQ_INT(conflicting.history.count, valid.history.count);
+    ASSERT_EQ_INT(conflicting.history.count, TEST_GROUP_MOVE_COUNT);
+    ASSERT_EQ_INT(conflicting.move_count, valid.move_count);
+    ASSERT_EQ_INT(conflicting.move_count, TEST_GROUP_MOVE_COUNT);
+}
+
+static void test_apply_board_input_out_of_order_slot_entry_is_accepted(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    type_value(&board, TEST_OUT_OF_ORDER_VALUE);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TEST_OUT_OF_ORDER_VALUE);
+    ASSERT_TRUE(board.conflicts.slots[TEST_FIRST_SLOT]);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    ASSERT_EQ_INT(board.cursor, TEST_FIRST_SLOT);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SLOT);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_PENDING);
+    ASSERT_EQ_INT(board.move_count, 1);
+    ASSERT_EQ_INT(board.history.count, 1);
+}
+
+static void test_apply_board_input_conflicting_entry_can_be_moved_past(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    type_value(&board, TEST_OUT_OF_ORDER_VALUE);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    ASSERT_EQ_INT(board.cursor, TEST_SECOND_SLOT);
+    type_value(&board, 5);
+    ASSERT_EQ_INT(board.slots[TEST_SECOND_SLOT].value, 5);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, TEST_OUT_OF_ORDER_VALUE);
+    ASSERT_TRUE(board.conflicts.slots[TEST_FIRST_SLOT]);
+}
+
+static void test_apply_board_input_updates_conflicts(void)
+{
+    static const BoardInput script[] = {
+        {.kind = BOARD_INPUT_DIGIT, .digit = 2},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 0},
+        {.kind = BOARD_INPUT_MOVE_RIGHT},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 9},
+        {.kind = BOARD_INPUT_DELETE},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 5},
+        {.kind = BOARD_INPUT_MOVE_UP},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 1},
+        {.kind = BOARD_INPUT_MOVE_RIGHT},
+        {.kind = BOARD_INPUT_OPERATION, .operation = GROUP_OPERATION_ADD},
+        {.kind = BOARD_INPUT_MOVE_RIGHT},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 3},
+        {.kind = BOARD_INPUT_DELETE},
+        {.kind = BOARD_INPUT_DIGIT, .digit = 2},
+        {.kind = BOARD_INPUT_MOVE_LEFT},
+        {.kind = BOARD_INPUT_OPERATION, .operation = GROUP_OPERATION_MULTIPLY},
+        {.kind = BOARD_INPUT_MOVE_DOWN},
+        {.kind = BOARD_INPUT_ACTIVATE}};
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    bool saw_conflict = false;
+    for (size_t i = 0; i < sizeof script / sizeof script[0]; i++)
+    {
+        apply_board_input(&board, script[i]);
+        ASSERT_TRUE(conflicts_follow_entries(&board));
+        saw_conflict = saw_conflict || board.conflicts.count > 0;
+    }
+    ASSERT_TRUE(saw_conflict);
+}
+
+static void test_apply_board_input_fixing_a_number_clears_the_conflict(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    enter_group_in_cell(&board, 0, &conflicting_group);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_EQ_INT(board.conflicts.count, 0);
+    press_digit(&board, 2);
+    ASSERT_EQ_INT(board.groups[0].greater, 2);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void
+test_apply_board_input_fixing_the_operation_clears_the_conflict(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    const OperandGroup wrong_operation = {1, GROUP_OPERATION_MULTIPLY, 2};
+    enter_group_in_cell(&board, 0, &wrong_operation);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_EQ_INT(board.groups[0].operation, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_apply_board_input_fixing_a_slot_clears_the_conflict(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    type_value(&board, TEST_OUT_OF_ORDER_VALUE);
+    ASSERT_TRUE(board.conflicts.slots[TEST_FIRST_SLOT]);
+    retype_slot(&board, 2);
+    ASSERT_EQ_INT(board.slots[TEST_FIRST_SLOT].value, 2);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_restore_board_recomputes_the_conflicts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    make_restore_entries(&entries);
+    entries.groups[0] = conflicting_group;
+    restore_board(&board, &puzzle, &entries, TEST_RESTORED_MOVES);
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    ASSERT_TRUE(board.conflicts.count >= 1);
+    ASSERT_TRUE(conflicts_follow_entries(&board));
+}
+
+static void test_restore_board_clears_the_conflicts_of_a_used_board(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    enter_group_in_cell(&board, 0, &conflicting_group);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    BoardSnapshot entries;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        entries.slot_values[i] = TETONOR_EMPTY_ENTRY;
+        clear_operand_group(&entries.groups[i]);
+    }
+    entries.result = BOARD_RESULT_PENDING;
+    restore_board(&board, &puzzle, &entries, 0);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_undo_board_move_recomputes_conflicts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    enter_group_in_cell(&board, 0, &conflicting_group);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(board.groups[0].greater == TETONOR_EMPTY_ENTRY);
+    ASSERT_TRUE(no_box_flagged(&board));
+    ASSERT_TRUE(conflicts_follow_entries(&board));
+}
+
+static void test_undo_board_move_restores_the_conflict_of_restored_entries(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    enter_group_in_cell(&board, 0, &conflicting_group);
+    press(&board, BOARD_INPUT_DELETE);
+    ASSERT_TRUE(no_box_flagged(&board));
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_EQ_INT(board.groups[0].greater, conflicting_group.greater);
+    ASSERT_EQ_INT(board.conflicts.count, 1);
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    ASSERT_TRUE(conflicts_follow_entries(&board));
+}
+
+static void test_undo_board_move_that_fails_leaves_conflicts_untouched(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_confirm_with_conflicts_still_judges_wrong(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    board.groups[0] = conflicting_group;
+    fill_slots(&board, fixture_hidden_values);
+    ASSERT_EQ_INT(board.focus, BOARD_FOCUS_SUBMIT);
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_WRONG);
+    ASSERT_FALSE(is_board_locked(&board));
+    ASSERT_TRUE(group_has_conflict(&board.conflicts, 0));
+    ASSERT_TRUE(conflicts_follow_entries(&board));
+}
+
+static void test_solved_board_has_no_conflicts(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_correct_board(&puzzle, &board);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(no_box_flagged(&board));
+    press(&board, BOARD_INPUT_MOVE_UP);
+    ASSERT_TRUE(no_box_flagged(&board));
+}
+
+static void test_apply_board_input_entering_the_solution_shows_no_conflict(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    for (int i = 0; i < TEST_EDITABLE_COUNT; i++)
+    {
+        type_value(&board, fixture_hidden_values[i]);
+        ASSERT_TRUE(no_box_flagged(&board));
+        press(&board, BOARD_INPUT_MOVE_RIGHT);
+    }
+    for (int cell = 0; cell < TETONOR_CELL_COUNT; cell++)
+    {
+        enter_group_in_cell(&board, cell, &fixture_groups[cell]);
+        ASSERT_TRUE(no_box_flagged(&board));
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -4680,5 +5019,23 @@ int main(void)
     RUN_TEST(test_restore_board_next_move_counts_from_the_restored_count);
     RUN_TEST(test_restore_board_keeps_editing_working);
     RUN_TEST(test_restore_board_with_empty_entries_and_no_moves);
+    RUN_TEST(test_init_board_has_no_conflicts);
+    RUN_TEST(test_init_board_without_slots_has_no_conflicts);
+    RUN_TEST(test_init_board_clears_the_conflicts_of_the_previous_game);
+    RUN_TEST(test_apply_board_input_conflicting_entry_is_accepted);
+    RUN_TEST(test_apply_board_input_out_of_order_slot_entry_is_accepted);
+    RUN_TEST(test_apply_board_input_conflicting_entry_can_be_moved_past);
+    RUN_TEST(test_apply_board_input_updates_conflicts);
+    RUN_TEST(test_apply_board_input_fixing_a_number_clears_the_conflict);
+    RUN_TEST(test_apply_board_input_fixing_the_operation_clears_the_conflict);
+    RUN_TEST(test_apply_board_input_fixing_a_slot_clears_the_conflict);
+    RUN_TEST(test_restore_board_recomputes_the_conflicts);
+    RUN_TEST(test_restore_board_clears_the_conflicts_of_a_used_board);
+    RUN_TEST(test_undo_board_move_recomputes_conflicts);
+    RUN_TEST(test_undo_board_move_restores_the_conflict_of_restored_entries);
+    RUN_TEST(test_undo_board_move_that_fails_leaves_conflicts_untouched);
+    RUN_TEST(test_confirm_with_conflicts_still_judges_wrong);
+    RUN_TEST(test_solved_board_has_no_conflicts);
+    RUN_TEST(test_apply_board_input_entering_the_solution_shows_no_conflict);
     return test_harness_result();
 }

@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "../test_harness.h"
 #include "../../src/ui/palette_style.h"
@@ -11,6 +12,7 @@
 #define TEST_VERY_MANY_COLORS 768
 #define TEST_STRIP_ROLE_COUNT 5
 #define TEST_USED_STATE_COUNT 4
+#define TEST_USAGE_COUNT 3
 #define TEST_THEME_COUNT_LEVELS 3
 #define TEST_THEME_ROLE_COUNT 6
 
@@ -478,6 +480,117 @@ static void test_theme_colors_below_sixteen_resolve_to_basic_colors(void)
     }
 }
 
+static void test_group_field_role_conflict_uses_the_conflict_role(void)
+{
+    ASSERT_EQ_INT(group_field_role(true), PALETTE_ROLE_CONFLICT);
+}
+
+static void test_group_field_role_without_conflict_is_entered(void)
+{
+    ASSERT_EQ_INT(group_field_role(false), PALETTE_ROLE_ENTERED);
+}
+
+static void test_default_conflict_color_is_distinct_at_every_count(void)
+{
+    static const PaletteRole others[] = {
+        PALETTE_ROLE_ENTERED,         PALETTE_ROLE_CORRECT,
+        PALETTE_ROLE_WRONG,           PALETTE_ROLE_USED_ONCE,
+        PALETTE_ROLE_USED_TWICE,      PALETTE_ROLE_USED_ONCE_TYPED,
+        PALETTE_ROLE_USED_TWICE_TYPED};
+    Palette palette;
+    init_palette(&palette);
+    for (int n = 0; n < TEST_COUNT_LEVELS; n++)
+    {
+        PaletteColor conflict =
+            resolve_default(PALETTE_ROLE_CONFLICT, fixture_color_counts[n]);
+        ASSERT_TRUE(conflict != resolve_palette_color(palette.background,
+                                                      fixture_color_counts[n]));
+        for (size_t i = 0; i < sizeof others / sizeof others[0]; i++)
+        {
+            ASSERT_TRUE(conflict !=
+                        resolve_default(others[i], fixture_color_counts[n]));
+        }
+    }
+}
+
+static void test_default_conflict_color_is_magenta_at_every_count(void)
+{
+    for (int n = 0; n < TEST_COUNT_LEVELS; n++)
+    {
+        ASSERT_EQ_INT(
+            resolve_default(PALETTE_ROLE_CONFLICT, fixture_color_counts[n]),
+            PALETTE_COLOR_MAGENTA);
+    }
+}
+
+static void test_theme_conflict_color_is_distinct_at_every_count(void)
+{
+    for (int theme = 0; theme < PALETTE_THEME_COUNT; theme++)
+    {
+        for (int n = 0; n < TEST_THEME_COUNT_LEVELS; n++)
+        {
+            int count = fixture_theme_color_counts[n];
+            PaletteColor conflict =
+                resolve_theme(theme, PALETTE_ROLE_CONFLICT, count);
+            ASSERT_TRUE(conflict != resolve_theme_background(theme, count));
+            for (int role = 0; role < PALETTE_ROLE_COUNT; role++)
+            {
+                if (role == PALETTE_ROLE_CONFLICT)
+                {
+                    continue;
+                }
+                /* Intended overlap: Light's 8-colour conflict fallback is red,
+                 * shared with WRONG (both mean error; "!" tells them apart). */
+                if (theme == PALETTE_THEME_LIGHT &&
+                    role == PALETTE_ROLE_WRONG &&
+                    count == TETONOR_BASIC_COLOR_COUNT)
+                {
+                    ASSERT_EQ_INT(conflict, PALETTE_COLOR_RED);
+                    ASSERT_EQ_INT(
+                        conflict,
+                        resolve_theme(theme, PALETTE_ROLE_WRONG, count));
+                    continue;
+                }
+                ASSERT_TRUE(conflict !=
+                            resolve_theme(theme, (PaletteRole)role, count));
+            }
+        }
+    }
+}
+
+static void test_light_theme_conflict_color_per_count(void)
+{
+    ASSERT_EQ_INT(resolve_theme(PALETTE_THEME_LIGHT, PALETTE_ROLE_CONFLICT,
+                                TETONOR_BASIC_COLOR_COUNT),
+                  PALETTE_COLOR_RED);
+    ASSERT_EQ_INT(resolve_theme(PALETTE_THEME_LIGHT, PALETTE_ROLE_CONFLICT,
+                                TETONOR_16_COLOR_COUNT),
+                  PALETTE_COLOR_DARK_GREY);
+    ASSERT_EQ_INT(resolve_theme(PALETTE_THEME_LIGHT, PALETTE_ROLE_CONFLICT,
+                                TEST_MANY_COLORS),
+                  PALETTE_COLOR_DARK_GREY);
+}
+
+static void test_strip_slot_role_ignores_conflicts(void)
+{
+    static const SlotUsage usages[TEST_USAGE_COUNT] = {
+        SLOT_USAGE_NONE, SLOT_USAGE_ONCE, SLOT_USAGE_TWICE};
+    for (int editable = 0; editable < 2; editable++)
+    {
+        for (int i = 0; i < TEST_USAGE_COUNT; i++)
+        {
+            PaletteRole role = PALETTE_ROLE_COUNT;
+            bool styled      = strip_slot_role(editable == 1, usages[i], &role);
+            ASSERT_EQ_INT(styled,
+                          editable == 1 || usages[i] != SLOT_USAGE_NONE);
+            if (styled)
+            {
+                ASSERT_TRUE(role != PALETTE_ROLE_CONFLICT);
+            }
+        }
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_color_count_thresholds_match_the_tiers);
@@ -513,5 +626,12 @@ int main(void)
     RUN_TEST(test_theme_result_roles_are_distinguishable);
     RUN_TEST(test_themes_differ_in_background_and_text);
     RUN_TEST(test_theme_colors_below_sixteen_resolve_to_basic_colors);
+    RUN_TEST(test_group_field_role_conflict_uses_the_conflict_role);
+    RUN_TEST(test_group_field_role_without_conflict_is_entered);
+    RUN_TEST(test_default_conflict_color_is_distinct_at_every_count);
+    RUN_TEST(test_default_conflict_color_is_magenta_at_every_count);
+    RUN_TEST(test_theme_conflict_color_is_distinct_at_every_count);
+    RUN_TEST(test_light_theme_conflict_color_per_count);
+    RUN_TEST(test_strip_slot_role_ignores_conflicts);
     return test_harness_result();
 }

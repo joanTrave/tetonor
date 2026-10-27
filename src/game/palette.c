@@ -24,6 +24,8 @@ static const Palette theme_palettes[PALETTE_THEME_COUNT] = {
                         PALETTE_COLOR_BRIGHT_GREEN, PALETTE_COLOR_GREEN),
                     [PALETTE_ROLE_TEXT] =
                         PALETTE_ENTRY(PALETTE_COLOR_WHITE, PALETTE_COLOR_WHITE),
+                    [PALETTE_ROLE_CONFLICT] = PALETTE_ENTRY(
+                        PALETTE_COLOR_MAGENTA, PALETTE_COLOR_MAGENTA),
                 },
             .background =
                 PALETTE_ENTRY(PALETTE_COLOR_BLACK, PALETTE_COLOR_BLACK),
@@ -48,6 +50,12 @@ static const Palette theme_palettes[PALETTE_THEME_COUNT] = {
                         PALETTE_ENTRY(PALETTE_COLOR_CYAN, PALETTE_COLOR_CYAN),
                     [PALETTE_ROLE_TEXT] =
                         PALETTE_ENTRY(PALETTE_COLOR_BLACK, PALETTE_COLOR_BLACK),
+                    /* Every readable basic colour on the white background is
+                     * taken, and yellow on white is unreadable, so on 8-colour
+                     * terminals this shares red with WRONG (same error
+                     * meaning; the "!" marker tells them apart). */
+                    [PALETTE_ROLE_CONFLICT] = PALETTE_ENTRY(
+                        PALETTE_COLOR_DARK_GREY, PALETTE_COLOR_RED),
                 },
             .background =
                 PALETTE_ENTRY(PALETTE_COLOR_BRIGHT_WHITE, PALETTE_COLOR_WHITE),

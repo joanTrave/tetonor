@@ -20,6 +20,7 @@ static void print_confirm_button(const Board* board);
 static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
 static void print_undo_notice(void);
+static void print_conflict_notice(const Board* board);
 static void print_timer(int32_t elapsed_seconds);
 static void print_controls_help(void);
 
@@ -39,6 +40,7 @@ void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
     print_restart_button(board);
     print_timer(elapsed_seconds);
     print_result(board);
+    print_conflict_notice(board);
     if (undo_notice)
     {
         print_undo_notice();
@@ -173,7 +175,8 @@ static void draw_group_field(const Board* board, int cell, GroupField field)
     LayoutPoint origin        = layout_group_field_origin(row, col, field);
     int width                 = layout_group_field_width(field);
     bool focused              = is_group_focused(board, cell, field);
-    attr_t attrs              = palette_role_attr(PALETTE_ROLE_ENTERED);
+    attr_t attrs              = palette_role_attr(
+        group_field_role(board->conflicts.fields[cell][field]));
     int number = field == GROUP_FIELD_SMALLER ? group->smaller : group->greater;
 
     if (focused)
@@ -194,6 +197,17 @@ static void draw_group_field(const Board* board, int cell, GroupField field)
     attr_off(attrs, NULL);
 }
 
+/* Overdraws the two side rules of row y with the conflict marker, so a
+ * conflict shows without colour. */
+static void draw_conflict_marks(int y, int left_x, int right_x)
+{
+    attr_t attrs = palette_role_attr(PALETTE_ROLE_CONFLICT);
+    attr_on(attrs, NULL);
+    mvaddch(y, left_x, (chtype)LAYOUT_CONFLICT_MARKER);
+    mvaddch(y, right_x, (chtype)LAYOUT_CONFLICT_MARKER);
+    attr_off(attrs, NULL);
+}
+
 static void print_group_row(const Board* board, int cell)
 {
     static const GroupField fields[] = {
@@ -203,6 +217,11 @@ static void print_group_row(const Board* board, int cell)
     LayoutPoint block = layout_sum_cell_origin(row, col);
 
     draw_vertical_rules(block.y + LAYOUT_CELL_GROUP_ROW, row, col, true);
+    if (group_has_conflict(&board->conflicts, cell))
+    {
+        draw_conflict_marks(block.y + LAYOUT_CELL_GROUP_ROW, block.x,
+                            block.x + LAYOUT_CELL_W - 1);
+    }
     for (size_t i = 0; i < sizeof fields / sizeof fields[0]; i++)
     {
         draw_group_field(board, cell, fields[i]);
@@ -251,6 +270,11 @@ static void print_available_slot(const Board* board, int index)
     int inner_w           = LAYOUT_MINI_W - 2;
 
     draw_box(origin.y, origin.x, LAYOUT_MINI_H, LAYOUT_MINI_W);
+    if (board->conflicts.slots[index])
+    {
+        draw_conflict_marks(origin.y + 1, origin.x,
+                            origin.x + LAYOUT_MINI_W - 1);
+    }
 
     bool focused = slot->editable && board->focus == BOARD_FOCUS_SLOT &&
                    index == board->cursor;
@@ -343,6 +367,21 @@ static void print_undo_notice(void)
     attr_on(A_BOLD, NULL);
     mvprintw(origin.y, origin.x, "%s", LAYOUT_UNDO_EMPTY_MESSAGE);
     attr_off(A_BOLD, NULL);
+}
+
+static void print_conflict_notice(const Board* board)
+{
+    if (board->conflicts.count == 0)
+    {
+        return;
+    }
+    char text[LAYOUT_CONFLICT_NOTICE_SIZE];
+    layout_format_conflict_notice(board->conflicts.count, text, sizeof text);
+    attr_t attrs       = palette_role_attr(PALETTE_ROLE_CONFLICT);
+    LayoutPoint origin = layout_conflict_notice_origin();
+    attr_on(attrs, NULL);
+    mvprintw(origin.y, origin.x, "%s", text);
+    attr_off(attrs, NULL);
 }
 
 static void print_timer(int32_t elapsed_seconds)
