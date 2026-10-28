@@ -4760,6 +4760,136 @@ static void test_apply_board_input_entering_the_solution_shows_no_conflict(void)
     }
 }
 
+static void test_init_board_starts_without_a_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    ASSERT_FALSE(board.hint_used);
+}
+
+static void test_init_board_clears_the_hint_mark_of_a_previous_game(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    board.hint_used = true;
+    init_board(&board, &puzzle);
+    ASSERT_FALSE(board.hint_used);
+}
+
+static void test_restore_board_clears_the_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    BoardSnapshot entries;
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        entries.slot_values[i] = TETONOR_EMPTY_ENTRY;
+        clear_operand_group(&entries.groups[i]);
+    }
+    entries.result  = BOARD_RESULT_PENDING;
+    board.hint_used = true;
+    restore_board(&board, &puzzle, &entries, 0);
+    ASSERT_FALSE(board.hint_used);
+}
+
+static void test_apply_board_input_never_sets_the_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    type_value(&board, TEST_WRONG_VALUE);
+    press(&board, BOARD_INPUT_DELETE);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(undo_board_move(&board));
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_FALSE(board.hint_used);
+}
+
+static void test_apply_board_input_keeps_the_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    board.hint_used = true;
+    type_value(&board, TEST_WRONG_VALUE);
+    ASSERT_TRUE(board.hint_used);
+    press(&board, BOARD_INPUT_DELETE);
+    press(&board, BOARD_INPUT_MOVE_RIGHT);
+    place_group_focus(&board, 0, GROUP_FIELD_OPERATION);
+    press_operation(&board, GROUP_OPERATION_ADD);
+    ASSERT_TRUE(board.hint_used);
+    board.focus = BOARD_FOCUS_SUBMIT;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_TRUE(board.hint_used);
+}
+
+static void test_apply_board_input_keeps_the_hint_mark_on_a_solved_board(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    fill_solution_groups(&board);
+    fill_slots(&board, fixture_hidden_values);
+    board.hint_used = true;
+    press(&board, BOARD_INPUT_ACTIVATE);
+    ASSERT_EQ_INT(board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(board.hint_used);
+}
+
+static void test_undo_board_move_keeps_the_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    press_digit(&board, 1);
+    board.hint_used = true;
+    ASSERT_TRUE(undo_board_move(&board));
+    ASSERT_TRUE(board.hint_used);
+    ASSERT_FALSE(undo_board_move(&board));
+    ASSERT_TRUE(board.hint_used);
+}
+
+static void test_build_board_strip_gives_given_numbers_and_typed_values(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_default_board(&puzzle, &board);
+    int strip[TETONOR_CELL_COUNT];
+    build_board_strip(&board, strip);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        bool hidden = i == TEST_FIRST_SLOT || i == TEST_SECOND_SLOT ||
+                      i == TEST_THIRD_SLOT || i == TEST_LAST_SLOT;
+        ASSERT_EQ_INT(strip[i],
+                      hidden ? TETONOR_EMPTY_ENTRY : fixture_strip[i]);
+    }
+    type_value(&board, TEST_WRONG_VALUE);
+    build_board_strip(&board, strip);
+    ASSERT_EQ_INT(strip[TEST_FIRST_SLOT], TEST_WRONG_VALUE);
+    ASSERT_EQ_INT(strip[TEST_SECOND_SLOT], TETONOR_EMPTY_ENTRY);
+    ASSERT_EQ_INT(strip[0], fixture_strip[0]);
+}
+
+static void
+test_build_board_strip_of_a_board_without_slots_is_the_given_row(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board_without_slots(&puzzle, &board);
+    int strip[TETONOR_CELL_COUNT];
+    build_board_strip(&board, strip);
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        ASSERT_EQ_INT(strip[i], fixture_strip[i]);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_init_board_places_cursor_on_first_editable_slot);
@@ -5037,5 +5167,14 @@ int main(void)
     RUN_TEST(test_confirm_with_conflicts_still_judges_wrong);
     RUN_TEST(test_solved_board_has_no_conflicts);
     RUN_TEST(test_apply_board_input_entering_the_solution_shows_no_conflict);
+    RUN_TEST(test_init_board_starts_without_a_hint_mark);
+    RUN_TEST(test_init_board_clears_the_hint_mark_of_a_previous_game);
+    RUN_TEST(test_restore_board_clears_the_hint_mark);
+    RUN_TEST(test_apply_board_input_never_sets_the_hint_mark);
+    RUN_TEST(test_apply_board_input_keeps_the_hint_mark);
+    RUN_TEST(test_apply_board_input_keeps_the_hint_mark_on_a_solved_board);
+    RUN_TEST(test_undo_board_move_keeps_the_hint_mark);
+    RUN_TEST(test_build_board_strip_gives_given_numbers_and_typed_values);
+    RUN_TEST(test_build_board_strip_of_a_board_without_slots_is_the_given_row);
     return test_harness_result();
 }

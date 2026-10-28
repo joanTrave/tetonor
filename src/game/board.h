@@ -93,6 +93,8 @@ typedef struct
     MoveHistory history; /* this game's undoable moves; emptied by init_board */
     int move_count; /* moves of this game (see board_move_count); init_board
                        resets it, undo keeps it */
+    bool hint_used; /* a hint was shown in this game; init_board clears it,
+                       undo keeps it */
 } Board;
 
 /* Starts a fresh entry session over puzzle. Also fills the slot usages
@@ -134,6 +136,10 @@ bool is_board_locked(const Board* board);
 /* True when leaving or restarting would lose progress: the board is not
  * locked and has at least one undoable edit. */
 bool board_progress_would_be_lost(const Board* board);
+
+/* Given numbers for given slots, the typed value (or TETONOR_EMPTY_ENTRY) for
+ * editable ones. */
+void build_board_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
 
 /* Inputs of this game that changed a slot value or a group box, i.e. the ones
  * recorded as undoable moves. Undo does not decrease it; init_board resets it

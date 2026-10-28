@@ -21,6 +21,8 @@ GamePort* create_game_port(void)
     game_port->is_board_locked_f              = &is_board_locked;
     game_port->board_progress_would_be_lost_f = &board_progress_would_be_lost;
     game_port->board_move_count_f             = &board_move_count;
+    game_port->request_board_hint_f           = &request_board_hint;
+    game_port->board_counts_for_statistics_f  = &board_counts_for_statistics;
     game_port->start_game_timer_f             = &start_game_timer;
     game_port->update_game_timer_f            = &update_game_timer;
     game_port->pause_game_timer_f             = &pause_game_timer;

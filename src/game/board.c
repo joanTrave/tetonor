@@ -26,7 +26,6 @@ static bool all_editable_filled(const Board* board);
 static bool all_groups_filled(const Board* board);
 static void submit_answer(Board* board);
 static void judge_board(Board* board);
-static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
 static void refresh_derived_entries(Board* board);
 static void take_snapshot(const Board* board, BoardSnapshot* snapshot);
 static void restore_snapshot(Board* board, const BoardSnapshot* snapshot);
@@ -56,6 +55,7 @@ void init_board(Board* board, const NumberGeneration* puzzle)
                                                        : BOARD_FOCUS_GROUP;
     clear_move_history(&board->history);
     board->move_count = 0;
+    board->hint_used  = false;
     refresh_derived_entries(board);
 }
 
@@ -461,8 +461,9 @@ static void submit_answer(Board* board)
     }
 }
 
-/* The available row as the player sees it: given numbers plus typed ones. */
-static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT])
+/* Given numbers for given slots, the typed value (or TETONOR_EMPTY_ENTRY) for
+ * editable ones. */
+void build_board_strip(const Board* board, int strip[TETONOR_CELL_COUNT])
 {
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
@@ -475,7 +476,7 @@ static void build_strip(const Board* board, int strip[TETONOR_CELL_COUNT])
 static void refresh_derived_entries(Board* board)
 {
     int strip[TETONOR_CELL_COUNT];
-    build_strip(board, strip);
+    build_board_strip(board, strip);
     compute_slot_usages(strip, board->groups, board->slot_usages);
     find_board_conflicts(board->puzzle, strip, board->groups,
                          &board->conflicts);
@@ -484,7 +485,7 @@ static void refresh_derived_entries(Board* board)
 static void judge_board(Board* board)
 {
     int strip[TETONOR_CELL_COUNT];
-    build_strip(board, strip);
+    build_board_strip(board, strip);
     board->result = is_answer_correct(board->puzzle, strip, board->groups)
                         ? BOARD_RESULT_CORRECT
                         : BOARD_RESULT_WRONG;

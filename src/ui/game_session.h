@@ -32,6 +32,9 @@ typedef struct
     PaletteTheme theme;   /* active theme, recorded only */
     ThemeMenu theme_menu; /* meaningful while the theme screen is shown */
     bool undo_notice;     /* set by an empty undo, cleared by the next key */
+    BoardHint hint;       /* the reply to the latest hint request */
+    bool hint_shown;      /* hint is on screen: set by a hint request, cleared
+                             by a move, a successful undo or a new game */
     bool linked_to_save;  /* this game is the saved one: completing it
                              discards the save */
     BoardKeyCodes board_key_codes;
@@ -70,14 +73,20 @@ void note_game_session_saved(GameSession* session, PauseSaveNotice notice);
  * theme). Touches nothing else; the caller applies the styles. */
 void set_game_session_theme(GameSession* session, int theme);
 
+/* False once a hint was shown in this game (board_counts_for_statistics_f): the
+ * caller then records nothing when the game completes. */
+bool game_session_counts_for_statistics(const GamePort* game_port,
+                                        const GameSession* session);
+
 /* Frees the puzzle through the port and sets it to NULL; calling it again
  * does nothing. */
 void end_game_session(const GamePort* game_port, GameSession* session);
 
 /* Applies one key on the current screen (game, pause menu, theme screen, prompt
- * or victory screen). The timer is paused while the menu, the theme screen or a
- * prompt is shown. Returns GAME_SESSION_SAVE when the pause menu asks to save;
- * the timer stays paused. */
+ * or victory screen). The hint key on the board asks for a hint without
+ * touching the board, the timer or the pause state. The timer is paused while
+ * the menu, the theme screen or a prompt is shown. Returns GAME_SESSION_SAVE
+ * when the pause menu asks to save; the timer stays paused. */
 GameSessionOutcome handle_game_session_key(const GamePort* game_port,
                                            GameSession* session, int key,
                                            time_t now);
@@ -88,9 +97,10 @@ bool update_game_session_timer(const GamePort* game_port, GameSession* session,
                                time_t now);
 
 /* Bookkeeping for a game that has just completed (update_game_session_timer
- * returned true): records it in stats_store when the port records statistics,
- * and discards the save when the session is linked to it. A daily challenge
- * touches neither store. Failures of either store are ignored, as before. */
+ * returned true): records it in stats_store when the port records statistics
+ * and no hint was used (game_session_counts_for_statistics), and discards the
+ * save when the session is linked to it. A daily challenge touches neither
+ * store. Failures of either store are ignored, as before. */
 void record_game_session_completion(const GamePort* game_port,
                                     const GameSession* session,
                                     StatsStore* stats_store,

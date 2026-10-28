@@ -1491,6 +1491,78 @@ static void test_game_port_allows_saving_true_for_normal_false_for_daily(void)
     ASSERT_FALSE(daily_allows);
 }
 
+static void test_create_game_port_wires_the_hint_functions(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool request_wired = game_port->request_board_hint_f == request_board_hint;
+    bool counts_wired =
+        game_port->board_counts_for_statistics_f == board_counts_for_statistics;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(request_wired);
+    ASSERT_TRUE(counts_wired);
+}
+
+static void test_game_port_hint_through_port_marks_the_game(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration puzzle;
+    build_fixture_puzzle(&puzzle, fixture_old_hidden, TEST_OLD_HIDDEN_COUNT);
+    Board board;
+    game_port->init_board_f(&board, &puzzle);
+    bool fresh_counts = game_port->board_counts_for_statistics_f(&board);
+    BoardHint hint    = game_port->request_board_hint_f(&board);
+    bool marked_count = game_port->board_counts_for_statistics_f(&board);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(fresh_counts);
+    ASSERT_EQ_INT(hint.status, HINT_STATUS_SUGGESTION);
+    ASSERT_FALSE(marked_count);
+}
+
+static void test_restart_game_clears_the_hint_mark(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    game_port->request_board_hint_f(&board);
+    bool marked    = !game_port->board_counts_for_statistics_f(&board);
+    bool restarted = restart_game(game_port, &board, &puzzle);
+    bool counts    = game_port->board_counts_for_statistics_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(marked);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(counts);
+}
+
+static void test_restart_game_failure_keeps_the_hint_mark(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    Board board;
+    NumberGeneration* puzzle = start_fake_game(game_port, &board);
+    if (puzzle == NULL)
+    {
+        destroy_game_port(game_port);
+        ASSERT_NOT_NULL(puzzle);
+    }
+    game_port->request_board_hint_f(&board);
+    fake_generate_fails = true;
+    bool restarted      = restart_game(game_port, &board, &puzzle);
+    bool counts         = game_port->board_counts_for_statistics_f(&board);
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_FALSE(restarted);
+    ASSERT_FALSE(counts);
+}
+
 int main(void)
 {
     RUN_TEST(test_create_game_port_returns_non_null);
@@ -1549,5 +1621,9 @@ int main(void)
     RUN_TEST(test_two_ports_prepared_the_same_day_give_the_same_puzzle);
     RUN_TEST(test_game_port_records_statistics_true_for_normal_false_for_daily);
     RUN_TEST(test_game_port_allows_saving_true_for_normal_false_for_daily);
+    RUN_TEST(test_create_game_port_wires_the_hint_functions);
+    RUN_TEST(test_game_port_hint_through_port_marks_the_game);
+    RUN_TEST(test_restart_game_clears_the_hint_mark);
+    RUN_TEST(test_restart_game_failure_keeps_the_hint_mark);
     return test_harness_result();
 }

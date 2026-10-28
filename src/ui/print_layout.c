@@ -8,8 +8,6 @@
 #include "style.h"
 
 #define NUMBER_BUFFER_SIZE 8
-#define LAYOUT_ADD_SYMBOL '+'
-#define LAYOUT_MULTIPLY_SYMBOL 'x'
 #define BLOCK_INNER_W (LAYOUT_CELL_W - 2)
 #define NO_SEPARATOR ((chtype)0)
 
@@ -23,8 +21,11 @@ static void print_undo_notice(void);
 static void print_conflict_notice(const Board* board);
 static void print_timer(int32_t elapsed_seconds);
 static void print_controls_help(void);
+static void print_hint_marks(const BoardHint* hint);
+static void print_side_panel(const BoardHint* hint, bool uncounted);
 
-void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
+void print_layout(const Board* board, bool undo_notice, const BoardHint* hint,
+                  bool uncounted, int32_t elapsed_seconds)
 {
     int rows = 0;
     int cols = 0;
@@ -39,6 +40,8 @@ void print_layout(const Board* board, bool undo_notice, int32_t elapsed_seconds)
     print_confirm_button(board);
     print_restart_button(board);
     print_timer(elapsed_seconds);
+    print_side_panel(hint, uncounted);
+    print_hint_marks(hint);
     print_result(board);
     print_conflict_notice(board);
     if (undo_notice)
@@ -197,15 +200,21 @@ static void draw_group_field(const Board* board, int cell, GroupField field)
     attr_off(attrs, NULL);
 }
 
-/* Overdraws the two side rules of row y with the conflict marker, so a
- * conflict shows without colour. */
+/* Overdraws the two side rules of row y with marker, so what it flags shows
+ * without colour. */
+static void draw_marks(int y, int left_x, int right_x, char marker,
+                       attr_t attrs)
+{
+    attr_on(attrs, NULL);
+    mvaddch(y, left_x, (chtype)(unsigned char)marker);
+    mvaddch(y, right_x, (chtype)(unsigned char)marker);
+    attr_off(attrs, NULL);
+}
+
 static void draw_conflict_marks(int y, int left_x, int right_x)
 {
-    attr_t attrs = palette_role_attr(PALETTE_ROLE_CONFLICT);
-    attr_on(attrs, NULL);
-    mvaddch(y, left_x, (chtype)LAYOUT_CONFLICT_MARKER);
-    mvaddch(y, right_x, (chtype)LAYOUT_CONFLICT_MARKER);
-    attr_off(attrs, NULL);
+    draw_marks(y, left_x, right_x, LAYOUT_CONFLICT_MARKER,
+               palette_role_attr(PALETTE_ROLE_CONFLICT));
 }
 
 static void print_group_row(const Board* board, int cell)
@@ -390,6 +399,47 @@ static void print_timer(int32_t elapsed_seconds)
     format_elapsed_time(elapsed_seconds, text, sizeof text);
     LayoutPoint origin = layout_timer_origin();
     mvprintw(origin.y, origin.x, "%s%s", LAYOUT_TIMER_LABEL, text);
+}
+
+/* Frames the box a hint suggests with LAYOUT_HINT_MARKER, after the matrix and
+ * the strip are drawn. */
+static void print_hint_marks(const BoardHint* hint)
+{
+    if (hint == NULL || hint->status != HINT_STATUS_SUGGESTION)
+    {
+        return;
+    }
+    if (hint->target == HINT_TARGET_GROUP)
+    {
+        LayoutPoint block = layout_sum_cell_origin(
+            hint->index / TETONOR_GRID_SIZE, hint->index % TETONOR_GRID_SIZE);
+        draw_marks(block.y + LAYOUT_CELL_GROUP_ROW, block.x,
+                   block.x + LAYOUT_CELL_W - 1, LAYOUT_HINT_MARKER, A_BOLD);
+        return;
+    }
+    LayoutPoint slot = layout_available_cell_origin(hint->index);
+    draw_marks(slot.y + 1, slot.x, slot.x + LAYOUT_MINI_W - 1,
+               LAYOUT_HINT_MARKER, A_BOLD);
+}
+
+/* The hint text under the timer, and the notice that a used hint keeps the
+ * game out of the statistics. */
+static void print_side_panel(const BoardHint* hint, bool uncounted)
+{
+    attr_on(A_BOLD, NULL);
+    for (int line = 0; hint != NULL && line < LAYOUT_HINT_LINE_COUNT; line++)
+    {
+        char text[LAYOUT_HINT_TEXT_SIZE];
+        layout_format_hint_line(hint, line, text, sizeof text);
+        LayoutPoint origin = layout_hint_line_origin(line);
+        mvprintw(origin.y, origin.x, "%s", text);
+    }
+    for (int line = 0; uncounted && line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        LayoutPoint origin = layout_uncounted_line_origin(line);
+        mvprintw(origin.y, origin.x, "%s", layout_uncounted_line(line));
+    }
+    attr_off(A_BOLD, NULL);
 }
 
 static void print_controls_help(void)

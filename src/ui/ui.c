@@ -148,6 +148,8 @@ static void draw_board(const GamePort* game_port, const GameSession* session)
     else
     {
         print_layout(&session->board, session->undo_notice,
+                     session->hint_shown ? &session->hint : NULL,
+                     !game_session_counts_for_statistics(game_port, session),
                      session->timer.elapsed_seconds);
     }
     if (game_port->mode == GAME_MODE_DAILY_CHALLENGE)

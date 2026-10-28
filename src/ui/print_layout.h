@@ -10,10 +10,13 @@
 #include "../game/game_port.h"
 
 /* Draws the puzzle, the player's entries, the cursor and the result.
- * undo_notice also shows the nothing-to-undo message; elapsed_seconds is the
- * game time shown by the timer. Does not own the data. */
-void print_layout(const Board* board, bool undo_notice,
-                  int32_t elapsed_seconds);
+ * undo_notice also shows the nothing-to-undo message; hint, unless NULL, is the
+ * reply to show under the timer and, for a suggestion, whose target is framed
+ * by LAYOUT_HINT_MARKER; uncounted also shows that the game will not count for
+ * statistics; elapsed_seconds is the game time shown by the timer. Does not own
+ * the data. */
+void print_layout(const Board* board, bool undo_notice, const BoardHint* hint,
+                  bool uncounted, int32_t elapsed_seconds);
 
 /* Draws the paused screen: the frozen timer and the pause menu or the prompt;
  * the board is hidden. can_save chooses the save hint: false shows that the

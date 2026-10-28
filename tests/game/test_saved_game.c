@@ -152,7 +152,8 @@ static void type_golden_entries(Board* board)
 static bool boards_have_same_entries(const Board* first, const Board* second)
 {
     if (first->result != second->result ||
-        first->move_count != second->move_count)
+        first->move_count != second->move_count ||
+        first->hint_used != second->hint_used)
     {
         return false;
     }
@@ -689,6 +690,7 @@ static void test_serialize_saved_game_widest_game_fits_the_file_limit(void)
     saved.difficulty      = DIFFICULTY_HARD;
     saved.elapsed_seconds = TETONOR_TIMER_MAX_SECONDS;
     saved.move_count      = INT_MAX;
+    saved.hint_used       = true;
     saved.entries.result  = BOARD_RESULT_WRONG;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
@@ -844,6 +846,8 @@ static void test_parse_saved_game_rejects_empty_and_header_only_text(void)
     expect_text_rejected("", 0);
     expect_text_rejected("TETONOR-SAVE 1", strlen("TETONOR-SAVE 1"));
     expect_text_rejected("TETONOR-SAVE 1\n", strlen("TETONOR-SAVE 1\n"));
+    expect_text_rejected("TETONOR-SAVE 2", strlen("TETONOR-SAVE 2"));
+    expect_text_rejected("TETONOR-SAVE 2\n", strlen("TETONOR-SAVE 2\n"));
     expect_text_rejected("\n", 1);
 }
 
@@ -910,14 +914,35 @@ static void test_parse_saved_game_rejects_an_embedded_nul(void)
 }
 
 static const TextEdit malformed_edits[] = {
-    {"TETONOR-SAVE 1", "TETONOR-SAVE 2"},
-    {"TETONOR-SAVE 1", "TETONOR-SAVE 0"},
-    {"TETONOR-SAVE 1\n", "TETONOR-SAVE 10\n"},
-    {"TETONOR-SAVE 1", "TETONOR-SAVE  1"},
-    {"TETONOR-SAVE 1", "TETONOR-SAVE"},
-    {"TETONOR-SAVE 1", "tetonor-save 1"},
-    {"TETONOR-SAVE 1", "TETONOR-STATS 1"},
-    {"TETONOR-SAVE 1", " TETONOR-SAVE 1"},
+    {"TETONOR-SAVE 2", "TETONOR-SAVE 3"},
+    {"TETONOR-SAVE 2", "TETONOR-SAVE 0"},
+    {"TETONOR-SAVE 2\n", "TETONOR-SAVE 20\n"},
+    {"TETONOR-SAVE 2\n", "TETONOR-SAVE 12\n"},
+    {"TETONOR-SAVE 2", "TETONOR-SAVE  2"},
+    {"TETONOR-SAVE 2", "TETONOR-SAVE"},
+    {"TETONOR-SAVE 2", "tetonor-save 2"},
+    {"TETONOR-SAVE 2", "TETONOR-STATS 2"},
+    {"TETONOR-SAVE 2", " TETONOR-SAVE 2"},
+    {"TETONOR-SAVE 2", "TETONOR-SAVE 1"},
+    {"hint-used 0\n", ""},
+    {"hint-used 0", "hint-used 2"},
+    {"hint-used 0", "hint-used -1"},
+    {"hint-used 0", "hint-used +0"},
+    {"hint-used 0", "hint-used 10"},
+    {"hint-used 0", "hint-used true"},
+    {"hint-used 0", "hint-used"},
+    {"hint-used 0", "hint-used  0"},
+    {"hint-used 0", "hint-used 0 "},
+    {"hint-used 0", "hint-used\t0"},
+    {"hint-used 0", "hints-used 0"},
+    {"hint-used 0", "hint_used 0"},
+    {"hint-used 0", "hint-used 4294967296"},
+    {"hint-used 0\n", "hint-used 0\nhint-used 0\n"},
+    {"hint-used 0\n", "hint-used 0\n\n"},
+    {"hint-used 0\n", " hint-used 0\n"},
+    {"moves 7\nhint-used 0\n", "hint-used 0\nmoves 7\n"},
+    {"hint-used 0\nresult pending\n", "result pending\nhint-used 0\n"},
+    {"hint-used 0\n", "hint-used 0\r"},
     {"difficulty 0", "dificulty 0"},
     {"difficulty 0", "difficulty"},
     {"difficulty 0", "difficulty  0"},
@@ -1310,6 +1335,8 @@ static void run_scripted_game(int difficulty, unsigned seed)
     check_round_trip(&board, difficulty);
     press(&board, BOARD_INPUT_DELETE);
     check_round_trip(&board, difficulty);
+    board.hint_used = true;
+    check_round_trip(&board, difficulty);
     press(&board, BOARD_INPUT_MOVE_RIGHT);
     press_digit(&board, 7);
     check_round_trip(&board, difficulty);
@@ -1363,6 +1390,229 @@ static void test_saved_game_round_trips_the_golden_text_through_a_board(void)
     char text[TEST_TEXT_SIZE];
     ASSERT_TRUE(serialize_saved_game(&saved, text, sizeof text));
     ASSERT_TRUE(strcmp(text, SAVE_FIXTURE_TEXT) == 0);
+}
+
+static void test_capture_saved_game_copies_the_hint_mark(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board(&puzzle, &board, DIFFICULTY_EASY);
+    SavedGame saved;
+    ASSERT_TRUE(capture_saved_game(&board, 0, DIFFICULTY_EASY, &saved));
+    ASSERT_FALSE(saved.hint_used);
+    board.hint_used = true;
+    ASSERT_TRUE(capture_saved_game(&board, 0, DIFFICULTY_EASY, &saved));
+    ASSERT_TRUE(saved.hint_used);
+    board.hint_used = false;
+    ASSERT_TRUE(capture_saved_game(&board, 0, DIFFICULTY_EASY, &saved));
+    ASSERT_FALSE(saved.hint_used);
+}
+
+static void test_is_saved_game_valid_accepts_either_hint_mark(void)
+{
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used = true;
+    ASSERT_TRUE(is_saved_game_valid(&saved));
+    saved.hint_used = false;
+    ASSERT_TRUE(is_saved_game_valid(&saved));
+}
+
+static void test_serialize_saved_game_always_writes_version_two(void)
+{
+    SavedGame saved;
+    build_empty_saved_game(&saved, DIFFICULTY_EASY);
+    char text[TEST_TEXT_SIZE];
+    ASSERT_TRUE(serialize_saved_game(&saved, text, sizeof text));
+    ASSERT_TRUE(strncmp(text, "TETONOR-SAVE 2\n", strlen("TETONOR-SAVE 2\n")) ==
+                0);
+    ASSERT_NOT_NULL(strstr(text, "\nmoves 0\nhint-used 0\nresult pending\n"));
+}
+
+static void test_serialize_saved_game_writes_the_hint_mark(void)
+{
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used = true;
+    char text[TEST_TEXT_SIZE];
+    ASSERT_TRUE(serialize_saved_game(&saved, text, sizeof text));
+    ASSERT_NOT_NULL(strstr(text, "\nmoves 7\nhint-used 1\nresult pending\n"));
+    ASSERT_NULL(strstr(text, "hint-used 0"));
+    char expected[TEST_TEXT_SIZE];
+    size_t length = 0;
+    TextEdit edit = {"hint-used 0", "hint-used 1"};
+    apply_edit(&edit, expected, sizeof expected, &length);
+    ASSERT_TRUE(strcmp(text, expected) == 0);
+}
+
+static void test_parse_saved_game_round_trips_the_hint_mark(void)
+{
+    SavedGame source;
+    build_saved_game_fixture(&source);
+    source.hint_used = true;
+    char text[TEST_TEXT_SIZE];
+    ASSERT_TRUE(serialize_saved_game(&source, text, sizeof text));
+    SavedGame parsed;
+    memset(&parsed, TEST_UNTOUCHED_BYTE, sizeof parsed);
+    ASSERT_TRUE(parse_saved_game(text, strlen(text), &parsed));
+    ASSERT_TRUE(parsed.hint_used);
+    ASSERT_TRUE(saved_games_equal(&parsed, &source));
+}
+
+static void test_parse_saved_game_reads_the_hint_line_of_version_two(void)
+{
+    char text[TEST_TEXT_SIZE];
+    size_t length = 0;
+    TextEdit edit = {"hint-used 0", "hint-used 1"};
+    apply_edit(&edit, text, sizeof text, &length);
+    SavedGame expected;
+    build_saved_game_fixture(&expected);
+    expected.hint_used = true;
+    SavedGame parsed;
+    ASSERT_TRUE(parse_saved_game(text, length, &parsed));
+    ASSERT_TRUE(parsed.hint_used);
+    ASSERT_TRUE(saved_games_equal(&parsed, &expected));
+}
+
+static void test_parse_saved_game_reads_version_one_as_no_hint(void)
+{
+    expect_text_parses_to_the_fixture(SAVE_FIXTURE_TEXT_V1,
+                                      strlen(SAVE_FIXTURE_TEXT_V1));
+    SavedGame parsed;
+    memset(&parsed, TEST_UNTOUCHED_BYTE, sizeof parsed);
+    ASSERT_TRUE(parse_saved_game(SAVE_FIXTURE_TEXT_V1,
+                                 strlen(SAVE_FIXTURE_TEXT_V1), &parsed));
+    ASSERT_FALSE(parsed.hint_used);
+}
+
+static void test_parse_saved_game_version_one_is_rewritten_as_version_two(void)
+{
+    SavedGame parsed;
+    ASSERT_TRUE(parse_saved_game(SAVE_FIXTURE_TEXT_V1,
+                                 strlen(SAVE_FIXTURE_TEXT_V1), &parsed));
+    char text[TEST_TEXT_SIZE];
+    ASSERT_TRUE(serialize_saved_game(&parsed, text, sizeof text));
+    ASSERT_TRUE(strcmp(text, SAVE_FIXTURE_TEXT) == 0);
+}
+
+static void test_parse_saved_game_version_one_accepts_every_difficulty(void)
+{
+    for (int i = 0; i < TEST_LEVEL_COUNT; i++)
+    {
+        SavedGame source;
+        build_empty_saved_game(&source, test_levels[i]);
+        source.elapsed_seconds = TEST_ELAPSED;
+        char text[TEST_TEXT_SIZE];
+        ASSERT_TRUE(serialize_saved_game(&source, text, sizeof text));
+        char* header = strstr(text, "TETONOR-SAVE 2");
+        char* hint   = strstr(text, "hint-used 0\n");
+        ASSERT_NOT_NULL(header);
+        ASSERT_NOT_NULL(hint);
+        header[strlen("TETONOR-SAVE ")] = '1';
+        memmove(hint, hint + strlen("hint-used 0\n"),
+                strlen(hint + strlen("hint-used 0\n")) + 1);
+        SavedGame parsed;
+        ASSERT_TRUE(parse_saved_game(text, strlen(text), &parsed));
+        ASSERT_TRUE(saved_games_equal(&parsed, &source));
+    }
+}
+
+static void test_parse_saved_game_version_one_accepts_crlf_line_ends(void)
+{
+    char text[TEST_TEXT_SIZE];
+    size_t length = 0;
+    for (const char* at = SAVE_FIXTURE_TEXT_V1; *at != '\0'; at++)
+    {
+        if (*at == '\n')
+        {
+            text[length++] = '\r';
+        }
+        text[length++] = *at;
+    }
+    expect_text_parses_to_the_fixture(text, length);
+}
+
+static void test_parse_saved_game_version_one_rejects_every_truncation(void)
+{
+    size_t full = strlen(SAVE_FIXTURE_TEXT_V1);
+    for (size_t length = 0; length + 1 < full; length++)
+    {
+        expect_text_rejected(SAVE_FIXTURE_TEXT_V1, length);
+    }
+}
+
+static void test_parse_saved_game_version_one_rejects_the_hint_line(void)
+{
+    char text[TEST_TEXT_SIZE];
+    size_t length = 0;
+    TextEdit edit = {"TETONOR-SAVE 2", "TETONOR-SAVE 1"};
+    apply_edit(&edit, text, sizeof text, &length);
+    ASSERT_NOT_NULL(strstr(text, "hint-used 0"));
+    expect_text_rejected(text, length);
+}
+
+static void test_restore_saved_game_restores_the_hint_mark(void)
+{
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used = true;
+    Board board;
+    GameTimer timer;
+    NumberGeneration* puzzle =
+        restore_saved_game(&saved, &board, &timer, TEST_NOW);
+    ASSERT_NOT_NULL(puzzle);
+    bool marked = board.hint_used;
+    free_number_generation(puzzle);
+    ASSERT_TRUE(marked);
+}
+
+static void test_restore_saved_game_without_the_mark_clears_a_used_board(void)
+{
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    NumberGeneration other;
+    build_fixture_puzzle(&other, NULL, 0);
+    Board board;
+    init_board(&board, &other);
+    board.hint_used = true;
+    GameTimer timer;
+    NumberGeneration* puzzle =
+        restore_saved_game(&saved, &board, &timer, TEST_NOW);
+    ASSERT_NOT_NULL(puzzle);
+    bool marked = board.hint_used;
+    free_number_generation(puzzle);
+    ASSERT_FALSE(marked);
+}
+
+static void test_restore_saved_game_invalid_save_keeps_the_hint_mark(void)
+{
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used       = false;
+    saved.elapsed_seconds = -1;
+    NumberGeneration other;
+    build_fixture_puzzle(&other, NULL, 0);
+    Board board;
+    init_board(&board, &other);
+    board.hint_used = true;
+    GameTimer timer;
+    ASSERT_NULL(restore_saved_game(&saved, &board, &timer, TEST_NOW));
+    ASSERT_TRUE(board.hint_used);
+}
+
+static void test_serialize_saved_game_writes_the_mark_of_a_captured_board(void)
+{
+    NumberGeneration puzzle;
+    Board board;
+    start_board(&puzzle, &board, DIFFICULTY_EASY);
+    type_golden_entries(&board);
+    board.hint_used = true;
+    SavedGame saved;
+    ASSERT_TRUE(capture_saved_game(&board, SAVE_FIXTURE_ELAPSED,
+                                   DIFFICULTY_EASY, &saved));
+    char text[TEST_TEXT_SIZE];
+    ASSERT_TRUE(serialize_saved_game(&saved, text, sizeof text));
+    ASSERT_NOT_NULL(strstr(text, "\nmoves 7\nhint-used 1\n"));
 }
 
 int main(void)
@@ -1425,5 +1675,21 @@ int main(void)
     RUN_TEST(test_restore_saved_game_invalid_save_changes_nothing);
     RUN_TEST(test_saved_game_round_trips_scripted_games_at_every_level);
     RUN_TEST(test_saved_game_round_trips_the_golden_text_through_a_board);
+    RUN_TEST(test_capture_saved_game_copies_the_hint_mark);
+    RUN_TEST(test_is_saved_game_valid_accepts_either_hint_mark);
+    RUN_TEST(test_serialize_saved_game_always_writes_version_two);
+    RUN_TEST(test_serialize_saved_game_writes_the_hint_mark);
+    RUN_TEST(test_parse_saved_game_round_trips_the_hint_mark);
+    RUN_TEST(test_parse_saved_game_reads_the_hint_line_of_version_two);
+    RUN_TEST(test_parse_saved_game_reads_version_one_as_no_hint);
+    RUN_TEST(test_parse_saved_game_version_one_is_rewritten_as_version_two);
+    RUN_TEST(test_parse_saved_game_version_one_accepts_every_difficulty);
+    RUN_TEST(test_parse_saved_game_version_one_accepts_crlf_line_ends);
+    RUN_TEST(test_parse_saved_game_version_one_rejects_every_truncation);
+    RUN_TEST(test_parse_saved_game_version_one_rejects_the_hint_line);
+    RUN_TEST(test_restore_saved_game_restores_the_hint_mark);
+    RUN_TEST(test_restore_saved_game_without_the_mark_clears_a_used_board);
+    RUN_TEST(test_restore_saved_game_invalid_save_keeps_the_hint_mark);
+    RUN_TEST(test_serialize_saved_game_writes_the_mark_of_a_captured_board);
     return test_harness_result();
 }

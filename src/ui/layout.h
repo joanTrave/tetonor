@@ -53,6 +53,18 @@
 #define LAYOUT_DAILY_BADGE_W                                                   \
     ((int)(sizeof LAYOUT_DAILY_BADGE_FORMAT - 1) - 2 +                         \
      (TETONOR_DATE_TEXT_SIZE - 1))
+#define LAYOUT_ADD_SYMBOL '+' /* the operation box shows these */
+#define LAYOUT_MULTIPLY_SYMBOL 'x'
+/* The side panel right of the matrix: the timer, then the hint, then the
+ * uncounted-game notice. */
+#define LAYOUT_SIDE_PANEL_GAP_Y 2 /* rows between the timer and the hint */
+#define LAYOUT_HINT_LINE_COUNT 2
+#define LAYOUT_UNCOUNTED_GAP_Y 1 /* blank rows between hint and notice */
+/* printf format: LAYOUT_CONFLICT_MARKER. */
+#define LAYOUT_CONFLICT_HINT_FORMAT "No hint: fix the boxes marked %c"
+#define LAYOUT_UNCOUNTED_LINE_COUNT 2
+#define LAYOUT_HINT_TEXT_SIZE 40 /* bytes of one hint line, NUL included */
+#define LAYOUT_HINT_MARKER '?'   /* frames the box a hint suggests */
 #define LAYOUT_CONFIRM_LABEL "CONFIRM"
 #define LAYOUT_RESTART_LABEL "RESTART"
 #define LAYOUT_BUTTON_PADDING 1 /* blank columns each side of the label */
@@ -196,6 +208,30 @@ LayoutPoint layout_timer_origin(void);
 /* Top-left of the daily challenge badge: row 0, above the board and every
  * centred panel. */
 LayoutPoint layout_daily_badge_origin(void);
+
+/* Row/column of hint line (0..LAYOUT_HINT_LINE_COUNT-1): in the timer's column,
+ * LAYOUT_SIDE_PANEL_GAP_Y rows below the timer. */
+LayoutPoint layout_hint_line_origin(int line);
+
+/* Row/column of uncounted-notice line (0..LAYOUT_UNCOUNTED_LINE_COUNT-1):
+ * below the hint lines, after one blank row. */
+LayoutPoint layout_uncounted_line_origin(int line);
+
+/* Columns of the side panel: from the timer's column to the right edge of the
+ * minimum terminal. */
+int layout_side_panel_width(void);
+
+/* Writes line (0..LAYOUT_HINT_LINE_COUNT-1) of the text that tells the player
+ * what hint is: the suggestion (1-based box, row and column numbers) or why
+ * there is none. "" for any other line. Truncated, and NUL-terminated when
+ * size > 0; size 0 writes nothing. Every line fits layout_side_panel_width().
+ */
+void layout_format_hint_line(const BoardHint* hint, int line, char* text,
+                             size_t size);
+
+/* One line of the notice shown once a hint was used (index
+ * 0..LAYOUT_UNCOUNTED_LINE_COUNT-1); "" out of range. */
+const char* layout_uncounted_line(int index);
 
 /* One line of the controls help (index 0..LAYOUT_HELP_LINE_COUNT-1); "" out of
  * range. */
