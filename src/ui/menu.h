@@ -12,7 +12,8 @@ typedef enum
     MENU_NONE, /* key ignored */
     MENU_STATISTICS,
     MENU_THEME,
-    MENU_CONTINUE /* continue the saved game */
+    MENU_CONTINUE, /* continue the saved game */
+    MENU_DAILY     /* play today's daily challenge */
 } MenuResult;
 
 /* Shows the start menu, then the difficulty screen and a game, repeatedly,
@@ -20,7 +21,8 @@ typedef enum
  * menu; completed games are recorded in stats_store. The theme screen opens
  * from the start menu; the choice is applied at once and saved in
  * config_store. C continues the saved game of saved_game_store when it has
- * one. Returns EXIT_SUCCESS or EXIT_FAILURE. */
+ * one. D plays the daily challenge of the current UTC day; it is neither
+ * recorded nor saved. Returns EXIT_SUCCESS or EXIT_FAILURE. */
 int ui_show_start_menu(StatsStore* stats_store, ConfigStore* config_store,
                        SavedGameStore* saved_game_store);
 

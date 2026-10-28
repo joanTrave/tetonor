@@ -25,6 +25,10 @@ MenuResult menu_result_from_key(int key, int enter_key)
     {
         return MENU_CONTINUE;
     }
+    if (key == TETONOR_KEY_DAILY || key == TETONOR_KEY_DAILY_UPPER)
+    {
+        return MENU_DAILY;
+    }
     return MENU_NONE;
 }
 

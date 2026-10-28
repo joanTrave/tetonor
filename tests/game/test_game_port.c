@@ -3,10 +3,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../test_harness.h"
 #include "fixture_puzzle.h"
 #include "../../src/game/game_port.h"
+
+#define TEST_DAILY_EPOCH ((time_t)1793059200) /* 2026-10-27 00:00:00 UTC */
+#define TEST_SECONDS_PER_DAY 86400
 
 #define TEST_SEED 42
 #define TEST_BOXES_PER_GROUP 3
@@ -30,14 +34,40 @@ static size_t fake_hidden_count;
 static int fake_free_calls;
 static uintptr_t fake_freed[TEST_MAX_FREED];
 
+/* Fake for the daily generation function of the port. Always returns the
+ * same fixed shape (fixture_old_hidden), so two calls are byte-identical: the
+ * same stand-in a "replay" expects of the real generator on a frozen date. */
+static int fake_generate_daily_calls;
+static CalendarDate fake_generate_daily_date;
+static bool fake_generate_daily_fails;
+
+static NumberGeneration* fake_generate_daily(CalendarDate date)
+{
+    fake_generate_daily_calls++;
+    fake_generate_daily_date = date;
+    if (fake_generate_daily_fails)
+    {
+        return NULL;
+    }
+    NumberGeneration* puzzle = malloc(sizeof *puzzle);
+    if (puzzle != NULL)
+    {
+        build_fixture_puzzle(puzzle, fixture_old_hidden, TEST_OLD_HIDDEN_COUNT);
+    }
+    return puzzle;
+}
+
 static void reset_fakes(void)
 {
-    fake_generate_calls      = 0;
-    fake_generate_difficulty = -1;
-    fake_generate_fails      = false;
-    fake_hidden              = fixture_old_hidden;
-    fake_hidden_count        = TEST_OLD_HIDDEN_COUNT;
-    fake_free_calls          = 0;
+    fake_generate_calls       = 0;
+    fake_generate_difficulty  = -1;
+    fake_generate_fails       = false;
+    fake_hidden               = fixture_old_hidden;
+    fake_hidden_count         = TEST_OLD_HIDDEN_COUNT;
+    fake_free_calls           = 0;
+    fake_generate_daily_calls = 0;
+    fake_generate_daily_date  = (CalendarDate){0, 0, 0};
+    fake_generate_daily_fails = false;
     memset(fake_freed, 0, sizeof fake_freed);
 }
 
@@ -399,8 +429,9 @@ static GamePort* create_fake_port(void)
     GamePort* game_port = create_game_port();
     if (game_port != NULL)
     {
-        game_port->generate_random_numbers_f = &fake_generate;
-        game_port->free_number_generation_f  = &fake_free;
+        game_port->generate_random_numbers_f  = &fake_generate;
+        game_port->free_number_generation_f   = &fake_free;
+        game_port->generate_daily_challenge_f = &fake_generate_daily;
     }
     return game_port;
 }
@@ -1269,6 +1300,197 @@ static void test_game_port_restore_through_the_port_rejects_a_bad_save(void)
     ASSERT_NULL(puzzle);
 }
 
+static void test_create_game_port_defaults_to_normal_mode(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    int mode = game_port->mode;
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(mode, GAME_MODE_NORMAL);
+    ASSERT_EQ_INT(GAME_MODE_NORMAL, 0);
+}
+
+static void test_create_game_port_wires_the_daily_generator(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool wired =
+        game_port->generate_daily_challenge_f == generate_daily_challenge;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(wired);
+}
+
+static void test_prepare_daily_challenge_sets_mode_date_and_difficulty(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool prepared     = prepare_daily_challenge(game_port, TEST_DAILY_EPOCH);
+    GameMode mode     = game_port->mode;
+    CalendarDate date = game_port->daily_date;
+    int difficulty    = game_port->difficulty;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(prepared);
+    ASSERT_EQ_INT(mode, GAME_MODE_DAILY_CHALLENGE);
+    ASSERT_EQ_INT(date.year, 2026);
+    ASSERT_EQ_INT(date.month, 10);
+    ASSERT_EQ_INT(date.day, 27);
+    ASSERT_EQ_INT(difficulty, DIFFICULTY_EASY);
+}
+
+static void test_prepare_daily_challenge_next_day_changes_difficulty(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool prepared = prepare_daily_challenge(
+        game_port, TEST_DAILY_EPOCH + TEST_SECONDS_PER_DAY);
+    int difficulty = game_port->difficulty;
+    int day        = game_port->daily_date.day;
+    destroy_game_port(game_port);
+    ASSERT_TRUE(prepared);
+    ASSERT_EQ_INT(day, 28);
+    ASSERT_EQ_INT(difficulty, DIFFICULTY_MEDIUM);
+}
+
+static void test_prepare_daily_challenge_rejects_minus_one(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    GameMode mode_before     = game_port->mode;
+    CalendarDate date_before = game_port->daily_date;
+    int difficulty_before    = game_port->difficulty;
+    bool prepared            = prepare_daily_challenge(game_port, (time_t)-1);
+    bool mode_unchanged      = game_port->mode == mode_before;
+    bool date_unchanged = game_port->daily_date.year == date_before.year &&
+                          game_port->daily_date.month == date_before.month &&
+                          game_port->daily_date.day == date_before.day;
+    bool difficulty_unchanged = game_port->difficulty == difficulty_before;
+    destroy_game_port(game_port);
+    ASSERT_FALSE(prepared);
+    ASSERT_TRUE(mode_unchanged);
+    ASSERT_TRUE(date_unchanged);
+    ASSERT_TRUE(difficulty_unchanged);
+}
+
+static void
+test_generate_game_puzzle_normal_mode_uses_the_random_generator(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    NumberGeneration* puzzle = generate_game_puzzle(game_port);
+    ASSERT_NOT_NULL(puzzle);
+    int random_calls   = fake_generate_calls;
+    int daily_calls    = fake_generate_daily_calls;
+    int generated_with = fake_generate_difficulty;
+    int difficulty     = game_port->difficulty;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(random_calls, 1);
+    ASSERT_EQ_INT(daily_calls, 0);
+    ASSERT_EQ_INT(generated_with, difficulty);
+}
+
+static void test_generate_game_puzzle_daily_mode_uses_the_daily_generator(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    ASSERT_TRUE(prepare_daily_challenge(game_port, TEST_DAILY_EPOCH));
+    NumberGeneration* puzzle = generate_game_puzzle(game_port);
+    ASSERT_NOT_NULL(puzzle);
+    int random_calls           = fake_generate_calls;
+    int daily_calls            = fake_generate_daily_calls;
+    CalendarDate generated_for = fake_generate_daily_date;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(random_calls, 0);
+    ASSERT_EQ_INT(daily_calls, 1);
+    ASSERT_EQ_INT(generated_for.year, 2026);
+    ASSERT_EQ_INT(generated_for.month, 10);
+    ASSERT_EQ_INT(generated_for.day, 27);
+}
+
+static void test_restart_game_in_daily_mode_replays_the_same_puzzle(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    ASSERT_TRUE(prepare_daily_challenge(game_port, TEST_DAILY_EPOCH));
+    NumberGeneration* puzzle = generate_game_puzzle(game_port);
+    ASSERT_NOT_NULL(puzzle);
+    Board board;
+    game_port->init_board_f(&board, puzzle);
+    uintptr_t old_address = (uintptr_t)puzzle;
+    bool restarted        = restart_game(game_port, &board, &puzzle);
+    bool replaced         = (uintptr_t)puzzle != old_address;
+    bool borrowed         = board.puzzle == puzzle;
+    bool fresh            = board_is_fresh(&board);
+    NumberGeneration reference;
+    build_fixture_puzzle(&reference, fixture_old_hidden, TEST_OLD_HIDDEN_COUNT);
+    bool same_shape = memcmp(puzzle, &reference, sizeof reference) == 0;
+    int daily_calls = fake_generate_daily_calls;
+    int free_calls  = fake_free_calls;
+    game_port->free_number_generation_f(puzzle);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(restarted);
+    ASSERT_TRUE(replaced);
+    ASSERT_TRUE(borrowed);
+    ASSERT_TRUE(fresh);
+    ASSERT_TRUE(same_shape);
+    ASSERT_EQ_INT(daily_calls, 2); /* one to start, one to restart */
+    ASSERT_EQ_INT(free_calls, 1);
+}
+
+/* DoD: "two separate game sessions on the same date" give the same puzzle,
+ * through the real generator, even with the rand() stream seeded differently
+ * in between (the daily puzzle must not depend on it). */
+static void test_two_ports_prepared_the_same_day_give_the_same_puzzle(void)
+{
+    GamePort* first = create_game_port();
+    ASSERT_NOT_NULL(first);
+    ASSERT_TRUE(prepare_daily_challenge(first, TEST_DAILY_EPOCH));
+    srand(1);
+    NumberGeneration* puzzle_first = generate_game_puzzle(first);
+    ASSERT_NOT_NULL(puzzle_first);
+
+    GamePort* second = create_game_port();
+    ASSERT_NOT_NULL(second);
+    ASSERT_TRUE(prepare_daily_challenge(second, TEST_DAILY_EPOCH +
+                                                    TEST_SECONDS_PER_DAY - 1));
+    srand(2);
+    NumberGeneration* puzzle_second = generate_game_puzzle(second);
+    ASSERT_NOT_NULL(puzzle_second);
+
+    bool equal = memcmp(puzzle_first, puzzle_second, sizeof *puzzle_first) == 0;
+    first->free_number_generation_f(puzzle_first);
+    second->free_number_generation_f(puzzle_second);
+    destroy_game_port(first);
+    destroy_game_port(second);
+    ASSERT_TRUE(equal);
+}
+
+static void
+test_game_port_records_statistics_true_for_normal_false_for_daily(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool normal_records = game_port_records_statistics(game_port);
+    ASSERT_TRUE(prepare_daily_challenge(game_port, TEST_DAILY_EPOCH));
+    bool daily_records = game_port_records_statistics(game_port);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(normal_records);
+    ASSERT_FALSE(daily_records);
+}
+
+static void test_game_port_allows_saving_true_for_normal_false_for_daily(void)
+{
+    GamePort* game_port = create_game_port();
+    ASSERT_NOT_NULL(game_port);
+    bool normal_allows = game_port_allows_saving(game_port);
+    ASSERT_TRUE(prepare_daily_challenge(game_port, TEST_DAILY_EPOCH));
+    bool daily_allows = game_port_allows_saving(game_port);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(normal_allows);
+    ASSERT_FALSE(daily_allows);
+}
+
 static void test_create_game_port_wires_the_hint_functions(void)
 {
     GamePort* game_port = create_game_port();
@@ -1388,6 +1610,17 @@ int main(void)
     RUN_TEST(test_create_game_port_wires_saved_game_functions);
     RUN_TEST(test_game_port_saves_and_restores_a_game_through_the_port);
     RUN_TEST(test_game_port_restore_through_the_port_rejects_a_bad_save);
+    RUN_TEST(test_create_game_port_defaults_to_normal_mode);
+    RUN_TEST(test_create_game_port_wires_the_daily_generator);
+    RUN_TEST(test_prepare_daily_challenge_sets_mode_date_and_difficulty);
+    RUN_TEST(test_prepare_daily_challenge_next_day_changes_difficulty);
+    RUN_TEST(test_prepare_daily_challenge_rejects_minus_one);
+    RUN_TEST(test_generate_game_puzzle_normal_mode_uses_the_random_generator);
+    RUN_TEST(test_generate_game_puzzle_daily_mode_uses_the_daily_generator);
+    RUN_TEST(test_restart_game_in_daily_mode_replays_the_same_puzzle);
+    RUN_TEST(test_two_ports_prepared_the_same_day_give_the_same_puzzle);
+    RUN_TEST(test_game_port_records_statistics_true_for_normal_false_for_daily);
+    RUN_TEST(test_game_port_allows_saving_true_for_normal_false_for_daily);
     RUN_TEST(test_create_game_port_wires_the_hint_functions);
     RUN_TEST(test_game_port_hint_through_port_marks_the_game);
     RUN_TEST(test_restart_game_clears_the_hint_mark);

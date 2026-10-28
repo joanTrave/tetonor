@@ -150,6 +150,14 @@ LayoutPoint layout_timer_origin(void)
     return origin;
 }
 
+LayoutPoint layout_daily_badge_origin(void)
+{
+    LayoutPoint origin;
+    origin.y = 0;
+    origin.x = LAYOUT_ORIGIN_X;
+    return origin;
+}
+
 const char* layout_help_line(int index)
 {
     if (index < 0 || index >= LAYOUT_HELP_LINE_COUNT)

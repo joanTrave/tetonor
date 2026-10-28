@@ -72,18 +72,8 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
          * completion tries again. */
         if (update_game_session_timer(game_port, &session, now))
         {
-            /* A game that used a hint is not recorded. */
-            if (game_session_counts_for_statistics(game_port, &session))
-            {
-                record_stats_store_game(stats_store, game_port->difficulty,
-                                        session.timer.elapsed_seconds);
-            }
-            /* The saved game is solved: it is not worth keeping. A failed
-             * removal is ignored. */
-            if (session.linked_to_save)
-            {
-                discard_saved_game_store(saved_game_store);
-            }
+            record_game_session_completion(game_port, &session, stats_store,
+                                           saved_game_store);
         }
         if (keyed || session.timer.elapsed_seconds != drawn_seconds)
         {
@@ -152,7 +142,8 @@ static void draw_board(const GamePort* game_port, const GameSession* session)
     }
     else if (is_game_paused(&session->pause))
     {
-        print_pause_screen(&session->pause, session->timer.elapsed_seconds);
+        print_pause_screen(&session->pause, session->timer.elapsed_seconds,
+                           game_port_allows_saving(game_port));
     }
     else
     {
@@ -160,6 +151,10 @@ static void draw_board(const GamePort* game_port, const GameSession* session)
                      session->hint_shown ? &session->hint : NULL,
                      !game_session_counts_for_statistics(game_port, session),
                      session->timer.elapsed_seconds);
+    }
+    if (game_port->mode == GAME_MODE_DAILY_CHALLENGE)
+    {
+        print_daily_challenge_badge(game_port->daily_date);
     }
     refresh();
 }

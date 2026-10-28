@@ -9,6 +9,8 @@
 #include "../game/fixture_puzzle.h"
 #include "../game/fixture_saved_game.h"
 #include "../../src/ui/game_session.h"
+#include "../../src/storage/saved_game_store.h"
+#include "../../src/storage/stats_store.h"
 
 #define TEST_ENTER_KEY 0x157
 #define TEST_PAD_ENTER_KEY 0x1cb
@@ -81,18 +83,57 @@ static void fake_free(NumberGeneration* puzzle)
     free(puzzle);
 }
 
+/* Fake for the daily generation function of the port. Shares
+ * fake_generate_fails with fake_generate: no test here needs them to fail
+ * independently. */
+static int fake_generate_daily_calls;
+static CalendarDate fake_generate_daily_date;
+
+static NumberGeneration* fake_generate_daily(CalendarDate date)
+{
+    fake_generate_daily_calls++;
+    fake_generate_daily_date = date;
+    if (fake_generate_fails)
+    {
+        return NULL;
+    }
+    NumberGeneration* puzzle = malloc(sizeof *puzzle);
+    if (puzzle != NULL)
+    {
+        fake_alloc_count++;
+        build_fixture_puzzle(puzzle, fixture_hidden, TEST_HIDDEN_COUNT);
+    }
+    return puzzle;
+}
+
 static GamePort* create_fake_port(void)
 {
-    fake_generate_calls      = 0;
-    fake_generate_difficulty = TEST_FAKE_PUZZLE_DIFFICULTY_UNSET;
-    fake_generate_fails      = false;
-    fake_alloc_count         = 0;
-    fake_free_calls          = 0;
-    GamePort* game_port      = create_game_port();
+    fake_generate_calls       = 0;
+    fake_generate_difficulty  = TEST_FAKE_PUZZLE_DIFFICULTY_UNSET;
+    fake_generate_fails       = false;
+    fake_alloc_count          = 0;
+    fake_free_calls           = 0;
+    fake_generate_daily_calls = 0;
+    fake_generate_daily_date  = (CalendarDate){0, 0, 0};
+    GamePort* game_port       = create_game_port();
     if (game_port != NULL)
     {
-        game_port->generate_random_numbers_f = &fake_generate;
-        game_port->free_number_generation_f  = &fake_free;
+        game_port->generate_random_numbers_f  = &fake_generate;
+        game_port->free_number_generation_f   = &fake_free;
+        game_port->generate_daily_challenge_f = &fake_generate_daily;
+    }
+    return game_port;
+}
+
+#define TEST_DAILY_EPOCH ((time_t)1793059200) /* 2026-10-27 00:00:00 UTC */
+
+/* A fake port already turned into today's (frozen) daily challenge. */
+static GamePort* create_daily_fake_port(void)
+{
+    GamePort* game_port = create_fake_port();
+    if (game_port != NULL)
+    {
+        prepare_daily_challenge(game_port, TEST_DAILY_EPOCH);
     }
     return game_port;
 }
@@ -109,6 +150,23 @@ static bool start_session(const GamePort* game_port, GameSession* session,
 static void run_session_test(void (*body)(const GamePort*, GameSession*))
 {
     GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    if (!start_session(game_port, &session, TEST_START_TIME))
+    {
+        destroy_game_port(game_port);
+        ASSERT_TRUE(false);
+    }
+    body(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(fake_free_calls, fake_alloc_count);
+}
+
+/* As run_session_test, over a daily-challenge port. */
+static void run_daily_session_test(void (*body)(const GamePort*, GameSession*))
+{
+    GamePort* game_port = create_daily_fake_port();
     ASSERT_NOT_NULL(game_port);
     GameSession session;
     if (!start_session(game_port, &session, TEST_START_TIME))
@@ -2926,6 +2984,252 @@ test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause(void)
     run_session_test(check_conflicting_entries_keep_timer_and_pause);
 }
 
+static void test_init_game_session_daily_mode_uses_the_daily_generator(void)
+{
+    GamePort* game_port = create_daily_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    bool started          = start_session(game_port, &session, TEST_START_TIME);
+    int random_calls      = fake_generate_calls;
+    int daily_calls       = fake_generate_daily_calls;
+    CalendarDate received = fake_generate_daily_date;
+    if (started)
+    {
+        end_game_session(game_port, &session);
+    }
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_EQ_INT(random_calls, 0);
+    ASSERT_EQ_INT(daily_calls, 1);
+    ASSERT_EQ_INT(received.year, 2026);
+    ASSERT_EQ_INT(received.month, 10);
+    ASSERT_EQ_INT(received.day, 27);
+}
+
+static void
+check_s_in_the_pause_menu_is_ignored_for_daily(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, 'p', TEST_START_TIME);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    Board board_before = session->board;
+    GameTimer timer    = session->timer;
+    ASSERT_EQ_INT(press(game_port, session, TEST_SAVE_KEY, TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_NONE);
+    ASSERT_FALSE(session->linked_to_save);
+    ASSERT_TRUE(boards_match(&session->board, &board_before));
+    ASSERT_TRUE(timers_match(&session->timer, &timer));
+    ASSERT_EQ_INT(
+        press(game_port, session, TEST_SAVE_KEY_UPPER, TEST_START_TIME),
+        GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.save_notice, PAUSE_SAVE_NOTICE_NONE);
+    ASSERT_FALSE(session->linked_to_save);
+}
+
+static void
+test_handle_game_session_key_s_in_the_pause_menu_is_ignored_for_daily(void)
+{
+    run_daily_session_test(check_s_in_the_pause_menu_is_ignored_for_daily);
+}
+
+static void check_capture_fails_for_daily(const GamePort* game_port,
+                                          GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'p', TEST_START_TIME);
+    SavedGame saved;
+    memset(&saved, TEST_GARBAGE_BYTE, sizeof saved);
+    unsigned char before[sizeof saved];
+    memcpy(before, &saved, sizeof saved);
+    ASSERT_FALSE(capture_game_session(game_port, session, &saved));
+    ASSERT_EQ_INT(memcmp(before, &saved, sizeof saved), 0);
+}
+
+static void test_capture_game_session_fails_for_daily(void)
+{
+    run_daily_session_test(check_capture_fails_for_daily);
+}
+
+static void
+check_new_game_in_daily_mode_replays_the_same_puzzle(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    const NumberGeneration* old_puzzle = session->puzzle;
+    NumberGeneration reference         = *old_puzzle;
+    ASSERT_EQ_INT(press(game_port, session, 'N', TEST_START_TIME + 10),
+                  GAME_SESSION_RESTARTED);
+    bool same_shape =
+        memcmp(session->puzzle, &reference, sizeof reference) == 0;
+    ASSERT_TRUE(session->puzzle != old_puzzle);
+    ASSERT_TRUE(same_shape);
+    ASSERT_TRUE(session_is_fresh(session, TEST_START_TIME + 10));
+}
+
+static void test_handle_game_session_key_new_game_in_daily_mode_replays(void)
+{
+    run_daily_session_test(
+        check_new_game_in_daily_mode_replays_the_same_puzzle);
+}
+
+static void check_restart_button_in_daily_mode_replays_the_same_puzzle(
+    const GamePort* game_port, GameSession* session)
+{
+    const NumberGeneration* old_puzzle = session->puzzle;
+    NumberGeneration reference         = *old_puzzle;
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_START_TIME),
+                  GAME_SESSION_RESTARTED);
+    bool same_shape =
+        memcmp(session->puzzle, &reference, sizeof reference) == 0;
+    ASSERT_TRUE(session->puzzle != old_puzzle);
+    ASSERT_TRUE(same_shape);
+}
+
+static void test_restart_button_in_daily_mode_replays_the_same_puzzle(void)
+{
+    run_daily_session_test(
+        check_restart_button_in_daily_mode_replays_the_same_puzzle);
+}
+
+static void check_victory_new_game_in_daily_mode_replays_the_same_puzzle(
+    const GamePort* game_port, GameSession* session)
+{
+    solve_session(game_port, session, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    const NumberGeneration* old_puzzle = session->puzzle;
+    NumberGeneration reference         = *old_puzzle;
+    ASSERT_EQ_INT(press(game_port, session, 'N', TEST_START_TIME + 5),
+                  GAME_SESSION_RESTARTED);
+    bool same_shape =
+        memcmp(session->puzzle, &reference, sizeof reference) == 0;
+    ASSERT_TRUE(session->puzzle != old_puzzle);
+    ASSERT_TRUE(same_shape);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_PENDING);
+}
+
+static void test_victory_new_game_in_daily_mode_replays_the_same_puzzle(void)
+{
+    run_daily_session_test(
+        check_victory_new_game_in_daily_mode_replays_the_same_puzzle);
+}
+
+static bool statistics_equal(const Statistics* first, const Statistics* second)
+{
+    for (int level = 0; level < DIFFICULTY_COUNT; level++)
+    {
+        if (first->by_difficulty[level].completed_count !=
+                second->by_difficulty[level].completed_count ||
+            first->by_difficulty[level].best_seconds !=
+                second->by_difficulty[level].best_seconds ||
+            first->by_difficulty[level].total_seconds !=
+                second->by_difficulty[level].total_seconds)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+#define TEST_COMPLETION_SECONDS 42
+
+static void test_record_game_session_completion_normal_records_statistics(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    game_port->difficulty = DIFFICULTY_HARD;
+    GameSession session;
+    ASSERT_TRUE(start_session(game_port, &session, TEST_START_TIME));
+    session.timer.elapsed_seconds = TEST_COMPLETION_SECONDS;
+    StatsStore stats_store;
+    init_stats_store(&stats_store, NULL);
+    SavedGameStore saved_game_store;
+    init_saved_game_store(&saved_game_store, NULL);
+    record_game_session_completion(game_port, &session, &stats_store,
+                                   &saved_game_store);
+    int32_t completed =
+        stats_store.statistics.by_difficulty[DIFFICULTY_HARD].completed_count;
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_EQ_INT(completed, 1);
+}
+
+static void
+test_record_game_session_completion_daily_touches_neither_store(void)
+{
+    GamePort* game_port = create_daily_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    ASSERT_TRUE(start_session(game_port, &session, TEST_START_TIME));
+    StatsStore stats_store;
+    init_stats_store(&stats_store, NULL);
+    Statistics before = stats_store.statistics;
+    SavedGameStore saved_game_store;
+    init_saved_game_store(&saved_game_store, NULL);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    save_saved_game_store(&saved_game_store, &saved);
+    record_game_session_completion(game_port, &session, &stats_store,
+                                   &saved_game_store);
+    bool stats_unchanged = statistics_equal(&stats_store.statistics, &before);
+    const SavedGame* remaining = saved_game_store_game(&saved_game_store);
+    bool save_kept = remaining != NULL && saved_games_equal(remaining, &saved);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(stats_unchanged);
+    ASSERT_TRUE(save_kept);
+}
+
+static void
+test_record_game_session_completion_normal_linked_discards_save(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    GameSession session;
+    ASSERT_TRUE(init_game_session_from_save(game_port, &session, &saved,
+                                            &board_codes, &menu_codes,
+                                            TEST_CONTINUED_AT));
+    ASSERT_TRUE(session.linked_to_save);
+    StatsStore stats_store;
+    init_stats_store(&stats_store, NULL);
+    SavedGameStore saved_game_store;
+    init_saved_game_store(&saved_game_store, NULL);
+    save_saved_game_store(&saved_game_store, &saved);
+    record_game_session_completion(game_port, &session, &stats_store,
+                                   &saved_game_store);
+    const SavedGame* remaining = saved_game_store_game(&saved_game_store);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_NULL(remaining);
+}
+
+static void test_record_game_session_completion_normal_unlinked_keeps_save(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    ASSERT_TRUE(start_session(game_port, &session, TEST_START_TIME));
+    ASSERT_FALSE(session.linked_to_save);
+    StatsStore stats_store;
+    init_stats_store(&stats_store, NULL);
+    SavedGameStore saved_game_store;
+    init_saved_game_store(&saved_game_store, NULL);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    save_saved_game_store(&saved_game_store, &saved);
+    record_game_session_completion(game_port, &session, &stats_store,
+                                   &saved_game_store);
+    const SavedGame* remaining = saved_game_store_game(&saved_game_store);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_NOT_NULL(remaining);
+}
+
 #define TEST_HINT_KEY 'h'
 #define TEST_HINT_KEY_UPPER 'H'
 #define TEST_HINT_AT (TEST_START_TIME + 5)
@@ -3582,6 +3886,17 @@ int main(void)
     RUN_TEST(test_a_continued_game_completes_once_with_restored_moves_and_time);
     RUN_TEST(
         test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause);
+    RUN_TEST(test_init_game_session_daily_mode_uses_the_daily_generator);
+    RUN_TEST(
+        test_handle_game_session_key_s_in_the_pause_menu_is_ignored_for_daily);
+    RUN_TEST(test_capture_game_session_fails_for_daily);
+    RUN_TEST(test_handle_game_session_key_new_game_in_daily_mode_replays);
+    RUN_TEST(test_restart_button_in_daily_mode_replays_the_same_puzzle);
+    RUN_TEST(test_victory_new_game_in_daily_mode_replays_the_same_puzzle);
+    RUN_TEST(test_record_game_session_completion_normal_records_statistics);
+    RUN_TEST(test_record_game_session_completion_daily_touches_neither_store);
+    RUN_TEST(test_record_game_session_completion_normal_linked_discards_save);
+    RUN_TEST(test_record_game_session_completion_normal_unlinked_keeps_save);
     RUN_TEST(test_handle_game_session_key_h_shows_a_hint);
     RUN_TEST(test_handle_game_session_key_upper_h_shows_a_hint);
     RUN_TEST(test_handle_game_session_key_hint_changes_nothing_but_the_hint);

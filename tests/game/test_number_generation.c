@@ -1,5 +1,6 @@
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -867,6 +868,89 @@ static void test_generate_random_numbers_valid_per_level(void)
     }
 }
 
+#define TEST_SEEDED_SEED 2024u
+
+static void test_generate_seeded_numbers_is_deterministic_per_seed(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        NumberGeneration* first =
+            generate_seeded_numbers(test_levels[level], TEST_SEEDED_SEED);
+        NumberGeneration* second =
+            generate_seeded_numbers(test_levels[level], TEST_SEEDED_SEED);
+        bool both_generated = first != NULL && second != NULL;
+        bool equal =
+            both_generated && memcmp(first, second, sizeof *first) == 0;
+        free_number_generation(first);
+        free_number_generation(second);
+        ASSERT_TRUE(both_generated);
+        ASSERT_TRUE(equal);
+    }
+}
+
+static void test_generate_seeded_numbers_does_not_touch_rand(void)
+{
+    srand(TEST_SEED);
+    int reference = rand();
+    srand(TEST_SEED);
+    NumberGeneration* puzzle =
+        generate_seeded_numbers(TEST_DEFAULT_DIFFICULTY, TEST_SEEDED_SEED);
+    ASSERT_NOT_NULL(puzzle);
+    int after = rand();
+    free_number_generation(puzzle);
+    ASSERT_EQ_INT(after, reference);
+}
+
+static void test_generate_seeded_numbers_matches_invariants_per_level(void)
+{
+    for (int level = 0; level < TEST_LEVEL_COUNT; level++)
+    {
+        for (uint32_t seed = 1; seed <= TEST_SEED_COUNT; seed++)
+        {
+            NumberGeneration* puzzle =
+                generate_seeded_numbers(test_levels[level], seed);
+            ASSERT_NOT_NULL(puzzle);
+            int hidden    = count_hidden(puzzle);
+            bool in_range = true;
+            for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+            {
+                int value = puzzle->solution_array[i];
+                if (value < TEST_MIN_OPERAND ||
+                    value > test_max_operands[level])
+                {
+                    in_range = false;
+                }
+            }
+            bool decomposes = solution_groups_decompose_their_cells(puzzle);
+            free_number_generation(puzzle);
+            ASSERT_EQ_INT(hidden, test_hidden_counts[level]);
+            ASSERT_TRUE(in_range);
+            ASSERT_TRUE(decomposes);
+        }
+    }
+}
+
+static void test_generate_seeded_numbers_different_seeds_can_differ(void)
+{
+    bool any_different = false;
+    NumberGeneration* base =
+        generate_seeded_numbers(TEST_DEFAULT_DIFFICULTY, 1);
+    ASSERT_NOT_NULL(base);
+    for (uint32_t seed = 2; seed <= TEST_SEED_COUNT; seed++)
+    {
+        NumberGeneration* puzzle =
+            generate_seeded_numbers(TEST_DEFAULT_DIFFICULTY, seed);
+        ASSERT_NOT_NULL(puzzle);
+        if (memcmp(base, puzzle, sizeof *base) != 0)
+        {
+            any_different = true;
+        }
+        free_number_generation(puzzle);
+    }
+    free_number_generation(base);
+    ASSERT_TRUE(any_different);
+}
+
 #define TEST_COPY_SENTINEL 4242
 
 static void test_alloc_number_generation_copy_equals_the_source(void)
@@ -965,5 +1049,9 @@ int main(void)
     RUN_TEST(test_alloc_number_generation_copy_is_independent);
     RUN_TEST(test_alloc_number_generation_copy_of_null_is_null);
     RUN_TEST(test_alloc_number_generation_copy_keeps_hidden_markers);
+    RUN_TEST(test_generate_seeded_numbers_is_deterministic_per_seed);
+    RUN_TEST(test_generate_seeded_numbers_does_not_touch_rand);
+    RUN_TEST(test_generate_seeded_numbers_matches_invariants_per_level);
+    RUN_TEST(test_generate_seeded_numbers_different_seeds_can_differ);
     return test_harness_result();
 }

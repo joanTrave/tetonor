@@ -9,6 +9,8 @@
 #include "theme_menu.h"
 #include "victory_menu.h"
 #include "../game/game_port.h"
+#include "../storage/saved_game_store.h"
+#include "../storage/stats_store.h"
 
 typedef enum
 {
@@ -59,7 +61,7 @@ bool init_game_session_from_save(const GamePort* game_port,
 
 /* Captures the game through capture_saved_game_f with the timer's elapsed
  * seconds and the port's difficulty. Returns false, leaving *out untouched,
- * when the game cannot be saved. */
+ * when the game cannot be saved (always the case for a daily challenge). */
 bool capture_game_session(const GamePort* game_port, const GameSession* session,
                           SavedGame* out);
 
@@ -93,5 +95,15 @@ GameSessionOutcome handle_game_session_key(const GamePort* game_port,
  * opens the victory screen with the game's summary. */
 bool update_game_session_timer(const GamePort* game_port, GameSession* session,
                                time_t now);
+
+/* Bookkeeping for a game that has just completed (update_game_session_timer
+ * returned true): records it in stats_store when the port records statistics
+ * and no hint was used (game_session_counts_for_statistics), and discards the
+ * save when the session is linked to it. A daily challenge touches neither
+ * store. Failures of either store are ignored, as before. */
+void record_game_session_completion(const GamePort* game_port,
+                                    const GameSession* session,
+                                    StatsStore* stats_store,
+                                    SavedGameStore* saved_game_store);
 
 #endif

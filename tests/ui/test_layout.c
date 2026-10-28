@@ -587,25 +587,36 @@ static void test_layout_timer_width_matches_label_and_text(void)
     ASSERT_TRUE(strcmp(LAYOUT_TIMER_LABEL, "Time: ") == 0);
 }
 
+/* The daily row (D8) is inserted between START and STATS, which shifts
+ * STATS, THEME and EXIT down by one row and grows the menu by one row. */
 static void test_layout_main_menu_rows_fit_window(void)
 {
     ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW >= 1);
     ASSERT_TRUE(LAYOUT_MENU_TITLE_ROW < LAYOUT_MENU_START_ROW);
-    ASSERT_TRUE(LAYOUT_MENU_START_ROW < LAYOUT_MENU_STATS_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_START_ROW < LAYOUT_MENU_DAILY_ROW);
+    ASSERT_TRUE(LAYOUT_MENU_DAILY_ROW < LAYOUT_MENU_STATS_ROW);
     ASSERT_TRUE(LAYOUT_MENU_STATS_ROW < LAYOUT_MENU_THEME_ROW);
     ASSERT_TRUE(LAYOUT_MENU_THEME_ROW < LAYOUT_MENU_EXIT_ROW);
     ASSERT_TRUE(LAYOUT_MENU_EXIT_ROW < LAYOUT_MENU_H - 1);
     ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
-    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
-    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 5);
-    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 6);
-    ASSERT_EQ_INT(LAYOUT_MENU_H, 8);
+    ASSERT_EQ_INT(LAYOUT_MENU_DAILY_ROW, 4);
+    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 7);
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 9);
 }
 
 static void test_layout_main_menu_statistics_hint_fits_window_width(void)
 {
     ASSERT_TRUE(LAYOUT_MENU_TEXT_COL +
                     (int)strlen("Press S to view statistics") <=
+                LAYOUT_MENU_W - 1);
+}
+
+static void test_layout_main_menu_daily_hint_fits_window_width(void)
+{
+    ASSERT_TRUE(LAYOUT_MENU_TEXT_COL +
+                    (int)strlen("Press D for today's daily challenge") <=
                 LAYOUT_MENU_W - 1);
 }
 
@@ -1041,13 +1052,14 @@ static void test_layout_main_menu_continue_row_is_the_free_row(void)
 
 static void test_layout_main_menu_is_not_resized_by_continue(void)
 {
-    ASSERT_EQ_INT(LAYOUT_MENU_H, 8);
+    ASSERT_EQ_INT(LAYOUT_MENU_H, 9);
     ASSERT_EQ_INT(LAYOUT_MENU_W, 50);
     ASSERT_EQ_INT(LAYOUT_MENU_TITLE_ROW, 1);
     ASSERT_EQ_INT(LAYOUT_MENU_START_ROW, 3);
-    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 4);
-    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 5);
-    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_MENU_DAILY_ROW, 4);
+    ASSERT_EQ_INT(LAYOUT_MENU_STATS_ROW, 5);
+    ASSERT_EQ_INT(LAYOUT_MENU_THEME_ROW, 6);
+    ASSERT_EQ_INT(LAYOUT_MENU_EXIT_ROW, 7);
     ASSERT_POINT(layout_centered_window_origin(LAYOUT_MIN_ROWS, LAYOUT_MIN_COLS,
                                                LAYOUT_MENU_H, LAYOUT_MENU_W),
                  9, 15);
@@ -1114,6 +1126,38 @@ static void test_layout_pause_save_texts_fit_the_panel_width(void)
     {
         ASSERT_TRUE((int)strlen(pause_save_notice_text(notice)) <= text_width);
     }
+}
+
+static void test_layout_pause_no_save_hint_fits_the_panel_width(void)
+{
+    int text_width = LAYOUT_PAUSE_MENU_W - 2 * LAYOUT_MENU_TEXT_COL;
+    ASSERT_TRUE(strcmp(LAYOUT_PAUSE_NO_SAVE_HINT,
+                       "Daily challenges are not saved") == 0);
+    ASSERT_TRUE((int)strlen(LAYOUT_PAUSE_NO_SAVE_HINT) <= text_width);
+}
+
+/* Row 0, above LAYOUT_ORIGIN_Y, so the badge sits above the board and every
+ * centred panel instead of overlapping them. */
+static void test_layout_daily_badge_origin_is_above_the_board(void)
+{
+    LayoutPoint origin = layout_daily_badge_origin();
+    ASSERT_EQ_INT(origin.y, 0);
+    ASSERT_EQ_INT(origin.x, LAYOUT_ORIGIN_X);
+    ASSERT_TRUE(origin.y < LAYOUT_ORIGIN_Y);
+}
+
+static void test_layout_daily_badge_fits_the_minimum_terminal(void)
+{
+    LayoutPoint origin = layout_daily_badge_origin();
+    ASSERT_TRUE(origin.x + LAYOUT_DAILY_BADGE_W <= LAYOUT_MIN_COLS);
+    ASSERT_EQ_INT(LAYOUT_MIN_COLS, 80);
+}
+
+static void test_layout_daily_badge_does_not_overlap_the_timer_row(void)
+{
+    LayoutPoint badge = layout_daily_badge_origin();
+    LayoutPoint timer = layout_timer_origin();
+    ASSERT_TRUE(badge.y < timer.y);
 }
 
 static BoardHint make_slot_hint(int index, int value)
@@ -1483,6 +1527,7 @@ int main(void)
     RUN_TEST(test_layout_timer_width_matches_label_and_text);
     RUN_TEST(test_layout_main_menu_rows_fit_window);
     RUN_TEST(test_layout_main_menu_statistics_hint_fits_window_width);
+    RUN_TEST(test_layout_main_menu_daily_hint_fits_window_width);
     RUN_TEST(test_layout_stats_rows_follow_levels);
     RUN_TEST(test_layout_stats_menu_rows_fit_window);
     RUN_TEST(test_layout_stats_columns_do_not_overlap);
@@ -1516,6 +1561,10 @@ int main(void)
     RUN_TEST(test_layout_pause_panel_rows_are_all_distinct);
     RUN_TEST(test_layout_pause_panel_is_not_resized_by_save);
     RUN_TEST(test_layout_pause_save_texts_fit_the_panel_width);
+    RUN_TEST(test_layout_pause_no_save_hint_fits_the_panel_width);
+    RUN_TEST(test_layout_daily_badge_origin_is_above_the_board);
+    RUN_TEST(test_layout_daily_badge_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_daily_badge_does_not_overlap_the_timer_row);
     RUN_TEST(test_layout_side_panel_constants);
     RUN_TEST(test_layout_hint_line_origins);
     RUN_TEST(test_layout_uncounted_line_origins);

@@ -47,6 +47,12 @@
 #define LAYOUT_TIMER_GAP_X 4 /* blank columns before the timer */
 #define LAYOUT_TIMER_W                                                         \
     ((int)(sizeof LAYOUT_TIMER_LABEL - 1) + TETONOR_ELAPSED_TEXT_SIZE - 1)
+/* printf format: the date text ("YYYY-MM-DD"). */
+#define LAYOUT_DAILY_BADGE_FORMAT " DAILY CHALLENGE %s "
+/* The format without its "%s", plus the date. */
+#define LAYOUT_DAILY_BADGE_W                                                   \
+    ((int)(sizeof LAYOUT_DAILY_BADGE_FORMAT - 1) - 2 +                         \
+     (TETONOR_DATE_TEXT_SIZE - 1))
 #define LAYOUT_ADD_SYMBOL '+' /* the operation box shows these */
 #define LAYOUT_MULTIPLY_SYMBOL 'x'
 /* The side panel right of the matrix: the timer, then the hint, then the
@@ -71,14 +77,15 @@
 #define LAYOUT_MIN_COLS 80
 /* printf format: columns, then rows. */
 #define LAYOUT_ENLARGE_FORMAT "Please enlarge the terminal to at least %dx%d"
-#define LAYOUT_MENU_H 8
+#define LAYOUT_MENU_H 9
 #define LAYOUT_MENU_W 50
 #define LAYOUT_MENU_TITLE_ROW 1
 #define LAYOUT_MENU_CONTINUE_ROW 2 /* the free row under the title */
 #define LAYOUT_MENU_START_ROW 3
-#define LAYOUT_MENU_STATS_ROW 4
-#define LAYOUT_MENU_THEME_ROW 5
-#define LAYOUT_MENU_EXIT_ROW 6
+#define LAYOUT_MENU_DAILY_ROW 4
+#define LAYOUT_MENU_STATS_ROW 5
+#define LAYOUT_MENU_THEME_ROW 6
+#define LAYOUT_MENU_EXIT_ROW 7
 #define LAYOUT_MENU_TEXT_COL 2
 #define LAYOUT_MENU_CONTINUE_HINT "Press C to continue the saved game"
 #define LAYOUT_DIFFICULTY_MENU_H 10
@@ -100,6 +107,7 @@
 #define LAYOUT_PAUSE_CHOOSE_HINT "UP/DOWN to choose, SPACE or ENTER to select"
 #define LAYOUT_PAUSE_BACK_HINT "Press ESC or P to resume, T for theme"
 #define LAYOUT_PAUSE_SAVE_HINT "Press S to save the game"
+#define LAYOUT_PAUSE_NO_SAVE_HINT "Daily challenges are not saved"
 #define LAYOUT_THEME_MENU_W LAYOUT_MENU_W
 #define LAYOUT_THEME_TITLE_ROW 1
 #define LAYOUT_THEME_FIRST_OPTION_ROW 3
@@ -196,6 +204,10 @@ void layout_format_conflict_notice(int count, char* text, size_t size);
 
 /* Top-left corner of the timer text, right of the first grid row. */
 LayoutPoint layout_timer_origin(void);
+
+/* Top-left of the daily challenge badge: row 0, above the board and every
+ * centred panel. */
+LayoutPoint layout_daily_badge_origin(void);
 
 /* Row/column of hint line (0..LAYOUT_HINT_LINE_COUNT-1): in the timer's column,
  * LAYOUT_SIDE_PANEL_GAP_Y rows below the timer. */

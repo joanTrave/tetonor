@@ -12,7 +12,8 @@
  * theme in config_store. A new puzzle starts when resume is NULL; otherwise the
  * game continues from resume, which is read only while the game starts. The
  * pause menu saves the game into saved_game_store, and completing a game that
- * is the saved one discards the save. Returns EXIT_SUCCESS or EXIT_FAILURE. */
+ * is the saved one discards the save. A daily challenge (game_port->mode) is
+ * never recorded nor saved. Returns EXIT_SUCCESS or EXIT_FAILURE. */
 int ui_run(const GamePort* game_port, StatsStore* stats_store,
            ConfigStore* config_store, SavedGameStore* saved_game_store,
            const SavedGame* resume);
