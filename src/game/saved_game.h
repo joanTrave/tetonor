@@ -20,6 +20,7 @@ typedef struct
     int difficulty;          /* a Difficulty */
     int32_t elapsed_seconds; /* 0..TETONOR_TIMER_MAX_SECONDS */
     int move_count;          /* see board_move_count */
+    bool hint_used;          /* see Board.hint_used */
     NumberGeneration puzzle; /* full copy, including the generator's solution */
     BoardSnapshot entries;   /* slot values, group boxes and result */
 } SavedGame;
@@ -35,13 +36,14 @@ bool capture_saved_game(const Board* board, int32_t elapsed_seconds,
  * moves. Checks every range before it uses a value as an index. */
 bool is_saved_game_valid(const SavedGame* saved);
 
-/* Writes the versioned text format, terminated by '\0'. Does not validate.
- * Returns false if the text does not fit size. */
+/* Writes the versioned text format (version 2, which adds the "hint-used"
+ * line), terminated by '\0'. Does not validate. Returns false if the text does
+ * not fit size. */
 bool serialize_saved_game(const SavedGame* saved, char* out, size_t size);
 
-/* Parses exactly length bytes, then validates. Returns false, leaving *saved
- * untouched, on any malformed, wrong-version, out-of-range or inconsistent
- * input. */
+/* Parses exactly length bytes, then validates. Reads versions 1 and 2; a
+ * version 1 text means no hint used. Returns false, leaving *saved untouched,
+ * on any malformed, wrong-version, out-of-range or inconsistent input. */
 bool parse_saved_game(const char* text, size_t length, SavedGame* saved);
 
 /* Validates saved, then copies its puzzle to the heap, restores board over it

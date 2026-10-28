@@ -20,6 +20,9 @@
 #define TEST_MIDDLE_COUNT 7
 #define TEST_FAR_ABOVE_COUNT 1000
 #define TEST_SMALL_BUFFER_SIZE 5
+#define TEST_HINT_BUFFER_SIZE LAYOUT_HINT_TEXT_SIZE
+#define TEST_HINT_STATUS_COUNT 5
+#define TEST_UNTOUCHED_CHAR 'z'
 
 #define ASSERT_POINT(point, expected_y, expected_x)                            \
     do                                                                         \
@@ -669,8 +672,8 @@ static void test_layout_help_lines_texts(void)
                        "Arrows move   0-9 type   + x * "
                        "operation   BACKSPACE delete") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(1),
-                       "ENTER/SPACE press button   U undo   P pause   T "
-                       "theme") == 0);
+                       "ENTER/SPACE press button   U undo   H hint   P pause "
+                       "  T theme") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(2),
                        "N new game   M main menu   ESC leave without asking") ==
                 0);
@@ -696,6 +699,7 @@ static void test_layout_help_lines_name_every_shortcut(void)
     ASSERT_TRUE(help_mentions("N new game"));
     ASSERT_TRUE(help_mentions("M main menu"));
     ASSERT_TRUE(help_mentions("U undo"));
+    ASSERT_TRUE(help_mentions("H hint"));
     ASSERT_TRUE(help_mentions("ESC leave"));
 }
 
@@ -1112,6 +1116,306 @@ static void test_layout_pause_save_texts_fit_the_panel_width(void)
     }
 }
 
+static BoardHint make_slot_hint(int index, int value)
+{
+    BoardHint hint = {.status = HINT_STATUS_SUGGESTION,
+                      .target = HINT_TARGET_SLOT,
+                      .index  = index,
+                      .value  = value};
+    clear_operand_group(&hint.group);
+    return hint;
+}
+
+static BoardHint make_group_hint(int cell, int smaller,
+                                 GroupOperation operation, int greater)
+{
+    BoardHint hint = {.status = HINT_STATUS_SUGGESTION,
+                      .target = HINT_TARGET_GROUP,
+                      .index  = cell,
+                      .group  = {smaller, operation, greater}};
+    return hint;
+}
+
+static BoardHint make_status_hint(HintStatus status)
+{
+    BoardHint hint = {.status = status};
+    clear_operand_group(&hint.group);
+    return hint;
+}
+
+static void expect_hint_lines(const BoardHint* hint, const char* first,
+                              const char* second)
+{
+    char text[TEST_HINT_BUFFER_SIZE];
+    memset(text, TEST_UNTOUCHED_CHAR, sizeof text);
+    layout_format_hint_line(hint, 0, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, first) == 0);
+    memset(text, TEST_UNTOUCHED_CHAR, sizeof text);
+    layout_format_hint_line(hint, 1, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, second) == 0);
+}
+
+static void test_layout_side_panel_constants(void)
+{
+    ASSERT_EQ_INT(LAYOUT_SIDE_PANEL_GAP_Y, 2);
+    ASSERT_EQ_INT(LAYOUT_HINT_LINE_COUNT, 2);
+    ASSERT_EQ_INT(LAYOUT_UNCOUNTED_LINE_COUNT, 2);
+    ASSERT_EQ_INT(LAYOUT_HINT_TEXT_SIZE, 40);
+    ASSERT_EQ_INT(LAYOUT_HINT_MARKER, '?');
+}
+
+static void test_layout_hint_line_origins(void)
+{
+    ASSERT_POINT(layout_hint_line_origin(0), 4, 48);
+    ASSERT_POINT(layout_hint_line_origin(1), 5, 48);
+    LayoutPoint timer = layout_timer_origin();
+    for (int line = 0; line < LAYOUT_HINT_LINE_COUNT; line++)
+    {
+        ASSERT_EQ_INT(layout_hint_line_origin(line).x, timer.x);
+        ASSERT_EQ_INT(layout_hint_line_origin(line).y,
+                      timer.y + LAYOUT_SIDE_PANEL_GAP_Y + line);
+    }
+}
+
+static void test_layout_uncounted_line_origins(void)
+{
+    ASSERT_POINT(layout_uncounted_line_origin(0), 7, 48);
+    ASSERT_POINT(layout_uncounted_line_origin(1), 8, 48);
+    int last_hint_row = layout_hint_line_origin(LAYOUT_HINT_LINE_COUNT - 1).y;
+    for (int line = 0; line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        ASSERT_EQ_INT(layout_uncounted_line_origin(line).x,
+                      layout_timer_origin().x);
+        ASSERT_EQ_INT(layout_uncounted_line_origin(line).y,
+                      last_hint_row + 2 + line);
+    }
+}
+
+static void test_layout_side_panel_width_value(void)
+{
+    ASSERT_EQ_INT(layout_side_panel_width(), 32);
+    ASSERT_EQ_INT(layout_side_panel_width(),
+                  LAYOUT_MIN_COLS - layout_timer_origin().x);
+}
+
+static void test_layout_side_panel_does_not_overlap_the_timer_or_the_grid(void)
+{
+    LayoutPoint timer       = layout_timer_origin();
+    LayoutPoint last_column = layout_sum_cell_origin(0, TEST_LAST_GRID_INDEX);
+    int grid_right          = last_column.x + LAYOUT_CELL_W - 1;
+    for (int line = 0; line < LAYOUT_HINT_LINE_COUNT; line++)
+    {
+        LayoutPoint origin = layout_hint_line_origin(line);
+        ASSERT_TRUE(origin.x > grid_right);
+        ASSERT_TRUE(origin.y > timer.y);
+    }
+    for (int line = 0; line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        LayoutPoint origin = layout_uncounted_line_origin(line);
+        ASSERT_TRUE(origin.x > grid_right);
+        ASSERT_TRUE(origin.y > timer.y);
+        ASSERT_TRUE(origin.y >
+                    layout_hint_line_origin(LAYOUT_HINT_LINE_COUNT - 1).y);
+    }
+}
+
+static void test_layout_side_panel_rows_are_all_distinct(void)
+{
+    int rows[1 + LAYOUT_HINT_LINE_COUNT + LAYOUT_UNCOUNTED_LINE_COUNT];
+    int count     = 0;
+    rows[count++] = layout_timer_origin().y;
+    for (int line = 0; line < LAYOUT_HINT_LINE_COUNT; line++)
+    {
+        rows[count++] = layout_hint_line_origin(line).y;
+    }
+    for (int line = 0; line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        rows[count++] = layout_uncounted_line_origin(line).y;
+    }
+    for (int first = 0; first < count; first++)
+    {
+        for (int second = first + 1; second < count; second++)
+        {
+            ASSERT_TRUE(rows[first] != rows[second]);
+        }
+    }
+}
+
+static void test_layout_side_panel_fits_the_minimum_terminal(void)
+{
+    for (int line = 0; line < LAYOUT_HINT_LINE_COUNT; line++)
+    {
+        LayoutPoint origin = layout_hint_line_origin(line);
+        ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+        ASSERT_TRUE(origin.x + layout_side_panel_width() <= LAYOUT_MIN_COLS);
+    }
+    for (int line = 0; line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        LayoutPoint origin = layout_uncounted_line_origin(line);
+        ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+        ASSERT_TRUE(origin.x + layout_side_panel_width() <= LAYOUT_MIN_COLS);
+    }
+}
+
+static void test_layout_format_hint_line_names_a_slot_suggestion(void)
+{
+    BoardHint hint = make_slot_hint(0, 7);
+    expect_hint_lines(&hint, "Hint: Available box 1", "enter 7");
+    hint = make_slot_hint(TEST_LAST_INDEX, TETONOR_MAX_VALUE);
+    expect_hint_lines(&hint, "Hint: Available box 16", "enter 29");
+    hint = make_slot_hint(4, 0);
+    expect_hint_lines(&hint, "Hint: Available box 5", "enter 0");
+}
+
+static void test_layout_format_hint_line_names_a_group_suggestion(void)
+{
+    BoardHint hint = make_group_hint(0, 3, GROUP_OPERATION_ADD, 12);
+    expect_hint_lines(&hint, "Hint: row 1, column 1", "enter 3 + 12");
+    hint = make_group_hint(6, 5, GROUP_OPERATION_MULTIPLY, 6);
+    expect_hint_lines(&hint, "Hint: row 2, column 3", "enter 5 x 6");
+    hint = make_group_hint(TEST_LAST_INDEX, 0, GROUP_OPERATION_ADD, 29);
+    expect_hint_lines(&hint, "Hint: row 4, column 4", "enter 0 + 29");
+    hint = make_group_hint(TETONOR_GRID_SIZE, 1, GROUP_OPERATION_MULTIPLY, 1);
+    expect_hint_lines(&hint, "Hint: row 2, column 1", "enter 1 x 1");
+}
+
+static void test_layout_format_hint_line_ignores_the_unused_fields(void)
+{
+    BoardHint slot = make_slot_hint(2, 9);
+    slot.group     = (OperandGroup){4, GROUP_OPERATION_MULTIPLY, 8};
+    expect_hint_lines(&slot, "Hint: Available box 3", "enter 9");
+    BoardHint group = make_group_hint(5, 2, GROUP_OPERATION_ADD, 3);
+    group.value     = 21;
+    expect_hint_lines(&group, "Hint: row 2, column 2", "enter 2 + 3");
+}
+
+static void test_layout_format_hint_line_texts_of_the_no_hint_replies(void)
+{
+    BoardHint hint = make_status_hint(HINT_STATUS_SOLVED);
+    expect_hint_lines(&hint, "No hint: puzzle already solved.", "");
+    hint = make_status_hint(HINT_STATUS_CONFLICTS);
+    expect_hint_lines(&hint, "No hint: fix the boxes marked !", "");
+    hint = make_status_hint(HINT_STATUS_BOARD_FULL);
+    expect_hint_lines(&hint, "No hint: every box is filled.",
+                      "Press CONFIRM or clear a box.");
+    hint = make_status_hint(HINT_STATUS_NO_SUGGESTION);
+    expect_hint_lines(&hint, "No hint for these entries.",
+                      "Some may be wrong: try undo.");
+}
+
+static void test_layout_format_hint_line_conflict_text_uses_the_marker(void)
+{
+    BoardHint hint = make_status_hint(HINT_STATUS_CONFLICTS);
+    char text[TEST_HINT_BUFFER_SIZE];
+    layout_format_hint_line(&hint, 0, text, sizeof text);
+    ASSERT_TRUE(strchr(text, LAYOUT_CONFLICT_MARKER) != NULL);
+}
+
+static void test_layout_format_hint_line_out_of_range_line_is_empty(void)
+{
+    const int lines[] = {-1, LAYOUT_HINT_LINE_COUNT, LAYOUT_HINT_LINE_COUNT + 1,
+                         INT_MAX, INT_MIN};
+    BoardHint hint    = make_slot_hint(1, 2);
+    for (size_t i = 0; i < sizeof lines / sizeof lines[0]; i++)
+    {
+        char text[TEST_HINT_BUFFER_SIZE];
+        memset(text, TEST_UNTOUCHED_CHAR, sizeof text);
+        layout_format_hint_line(&hint, lines[i], text, sizeof text);
+        ASSERT_EQ_INT(text[0], '\0');
+    }
+}
+
+static void test_layout_format_hint_line_truncates_and_terminates(void)
+{
+    BoardHint hint = make_slot_hint(0, 7);
+    char text[TEST_SMALL_BUFFER_SIZE];
+    memset(text, TEST_UNTOUCHED_CHAR, sizeof text);
+    layout_format_hint_line(&hint, 0, text, sizeof text);
+    ASSERT_TRUE(strcmp(text, "Hint") == 0);
+    char one[1] = {TEST_UNTOUCHED_CHAR};
+    layout_format_hint_line(&hint, 0, one, sizeof one);
+    ASSERT_EQ_INT(one[0], '\0');
+    char exact[sizeof "enter 7"];
+    memset(exact, TEST_UNTOUCHED_CHAR, sizeof exact);
+    layout_format_hint_line(&hint, 1, exact, sizeof exact);
+    ASSERT_TRUE(strcmp(exact, "enter 7") == 0);
+    char shorter[sizeof "enter 7" - 1];
+    memset(shorter, TEST_UNTOUCHED_CHAR, sizeof shorter);
+    layout_format_hint_line(&hint, 1, shorter, sizeof shorter);
+    ASSERT_TRUE(strcmp(shorter, "enter ") == 0);
+}
+
+static void test_layout_format_hint_line_size_zero_writes_nothing(void)
+{
+    BoardHint hint = make_slot_hint(0, 7);
+    char text[TEST_SMALL_BUFFER_SIZE];
+    memset(text, TEST_UNTOUCHED_CHAR, sizeof text);
+    layout_format_hint_line(&hint, 0, text, 0);
+    for (size_t i = 0; i < sizeof text; i++)
+    {
+        ASSERT_EQ_INT(text[i], TEST_UNTOUCHED_CHAR);
+    }
+}
+
+static void test_layout_format_hint_line_every_text_fits_the_side_panel(void)
+{
+    const BoardHint hints[] = {
+        make_slot_hint(TEST_LAST_INDEX, TETONOR_MAX_VALUE),
+        make_group_hint(TEST_LAST_INDEX, TETONOR_MAX_VALUE,
+                        GROUP_OPERATION_MULTIPLY, TETONOR_MAX_VALUE),
+        make_status_hint(HINT_STATUS_SOLVED),
+        make_status_hint(HINT_STATUS_CONFLICTS),
+        make_status_hint(HINT_STATUS_BOARD_FULL),
+        make_status_hint(HINT_STATUS_NO_SUGGESTION)};
+    for (size_t i = 0; i < sizeof hints / sizeof hints[0]; i++)
+    {
+        for (int line = 0; line < LAYOUT_HINT_LINE_COUNT; line++)
+        {
+            char text[TEST_HINT_BUFFER_SIZE];
+            layout_format_hint_line(&hints[i], line, text, sizeof text);
+            ASSERT_TRUE((int)strlen(text) <= layout_side_panel_width());
+            ASSERT_TRUE((int)strlen(text) < LAYOUT_HINT_TEXT_SIZE);
+        }
+    }
+}
+
+static void test_layout_format_hint_line_first_line_is_never_empty(void)
+{
+    const HintStatus statuses[TEST_HINT_STATUS_COUNT] = {
+        HINT_STATUS_SUGGESTION, HINT_STATUS_SOLVED, HINT_STATUS_CONFLICTS,
+        HINT_STATUS_BOARD_FULL, HINT_STATUS_NO_SUGGESTION};
+    for (int i = 0; i < TEST_HINT_STATUS_COUNT; i++)
+    {
+        BoardHint hint = make_slot_hint(1, 2);
+        hint.status    = statuses[i];
+        char text[TEST_HINT_BUFFER_SIZE];
+        layout_format_hint_line(&hint, 0, text, sizeof text);
+        ASSERT_TRUE(strlen(text) > 0);
+    }
+}
+
+static void test_layout_uncounted_lines_texts(void)
+{
+    ASSERT_TRUE(
+        strcmp(layout_uncounted_line(0), "Hint used: this game will not") == 0);
+    ASSERT_TRUE(strcmp(layout_uncounted_line(1), "count for statistics.") == 0);
+    ASSERT_TRUE(strcmp(layout_uncounted_line(-1), "") == 0);
+    ASSERT_TRUE(
+        strcmp(layout_uncounted_line(LAYOUT_UNCOUNTED_LINE_COUNT), "") == 0);
+    ASSERT_TRUE(strcmp(layout_uncounted_line(INT_MAX), "") == 0);
+    ASSERT_TRUE(strcmp(layout_uncounted_line(INT_MIN), "") == 0);
+}
+
+static void test_layout_uncounted_lines_fit_the_side_panel(void)
+{
+    for (int line = 0; line < LAYOUT_UNCOUNTED_LINE_COUNT; line++)
+    {
+        ASSERT_TRUE(strlen(layout_uncounted_line(line)) > 0);
+        ASSERT_TRUE((int)strlen(layout_uncounted_line(line)) <=
+                    layout_side_panel_width());
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_layout_centered_offset_centres_content);
@@ -1212,5 +1516,24 @@ int main(void)
     RUN_TEST(test_layout_pause_panel_rows_are_all_distinct);
     RUN_TEST(test_layout_pause_panel_is_not_resized_by_save);
     RUN_TEST(test_layout_pause_save_texts_fit_the_panel_width);
+    RUN_TEST(test_layout_side_panel_constants);
+    RUN_TEST(test_layout_hint_line_origins);
+    RUN_TEST(test_layout_uncounted_line_origins);
+    RUN_TEST(test_layout_side_panel_width_value);
+    RUN_TEST(test_layout_side_panel_does_not_overlap_the_timer_or_the_grid);
+    RUN_TEST(test_layout_side_panel_rows_are_all_distinct);
+    RUN_TEST(test_layout_side_panel_fits_the_minimum_terminal);
+    RUN_TEST(test_layout_format_hint_line_names_a_slot_suggestion);
+    RUN_TEST(test_layout_format_hint_line_names_a_group_suggestion);
+    RUN_TEST(test_layout_format_hint_line_ignores_the_unused_fields);
+    RUN_TEST(test_layout_format_hint_line_texts_of_the_no_hint_replies);
+    RUN_TEST(test_layout_format_hint_line_conflict_text_uses_the_marker);
+    RUN_TEST(test_layout_format_hint_line_out_of_range_line_is_empty);
+    RUN_TEST(test_layout_format_hint_line_truncates_and_terminates);
+    RUN_TEST(test_layout_format_hint_line_size_zero_writes_nothing);
+    RUN_TEST(test_layout_format_hint_line_every_text_fits_the_side_panel);
+    RUN_TEST(test_layout_format_hint_line_first_line_is_never_empty);
+    RUN_TEST(test_layout_uncounted_lines_texts);
+    RUN_TEST(test_layout_uncounted_lines_fit_the_side_panel);
     return test_harness_result();
 }

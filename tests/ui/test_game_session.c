@@ -2926,6 +2926,570 @@ test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause(void)
     run_session_test(check_conflicting_entries_keep_timer_and_pause);
 }
 
+#define TEST_HINT_KEY 'h'
+#define TEST_HINT_KEY_UPPER 'H'
+#define TEST_HINT_AT (TEST_START_TIME + 5)
+#define TEST_AFTER_HINT_AT (TEST_START_TIME + 9)
+#define TEST_CONFLICTING_DIGIT '9'
+
+static void check_h_shows_a_hint_for_the_focused_slot(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_EQ_INT(press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    ASSERT_EQ_INT(session->hint.target, HINT_TARGET_SLOT);
+    ASSERT_EQ_INT(session->hint.index, TEST_FIRST_SLOT);
+    ASSERT_EQ_INT(session->hint.value, fixture_strip[TEST_FIRST_SLOT]);
+}
+
+static void test_handle_game_session_key_h_shows_a_hint(void)
+{
+    run_session_test(check_h_shows_a_hint_for_the_focused_slot);
+}
+
+static void check_upper_h_shows_a_hint(const GamePort* game_port,
+                                       GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY_UPPER, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+}
+
+static void test_handle_game_session_key_upper_h_shows_a_hint(void)
+{
+    run_session_test(check_upper_h_shows_a_hint);
+}
+
+static void
+check_hint_changes_no_board_timer_or_pause_state(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, '2', TEST_START_TIME);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    GameSession before = *session;
+    int moves          = game_port->board_move_count_f(&session->board);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_TRUE(boards_match(&session->board, &before.board));
+    ASSERT_EQ_INT(game_port->board_move_count_f(&session->board), moves);
+    ASSERT_EQ_INT(session->board.history.count, before.board.history.count);
+    ASSERT_EQ_INT(session->board.result, before.board.result);
+    ASSERT_TRUE(timers_match(&session->timer, &before.timer));
+    ASSERT_TRUE(pause_states_match(&session->pause, &before.pause));
+    ASSERT_FALSE(is_game_paused(&session->pause));
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_FALSE(is_victory_shown(&session->victory));
+}
+
+static void test_handle_game_session_key_hint_changes_nothing_but_the_hint(void)
+{
+    run_session_test(check_hint_changes_no_board_timer_or_pause_state);
+}
+
+static void check_a_move_clears_the_hint(const GamePort* game_port,
+                                         GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    make_edit(game_port, session);
+    ASSERT_FALSE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_a_move_clears_the_hint(void)
+{
+    run_session_test(check_a_move_clears_the_hint);
+}
+
+static void check_a_group_edit_clears_the_hint(const GamePort* game_port,
+                                               GameSession* session)
+{
+    session->board.focus        = BOARD_FOCUS_GROUP;
+    session->board.group_cursor = 0;
+    session->board.group_field  = GROUP_FIELD_OPERATION;
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    press(game_port, session, '+', TEST_AFTER_HINT_AT);
+    ASSERT_EQ_INT(game_port->board_move_count_f(&session->board), 1);
+    ASSERT_FALSE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_a_group_edit_clears_the_hint(void)
+{
+    run_session_test(check_a_group_edit_clears_the_hint);
+}
+
+static void check_a_cursor_move_keeps_the_hint(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    const int keys[] = {TEST_RIGHT_KEY, TEST_LEFT_KEY, TEST_DOWN_KEY,
+                        TEST_UP_KEY};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        press(game_port, session, keys[i], TEST_AFTER_HINT_AT);
+        ASSERT_TRUE(session->hint_shown);
+        ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    }
+    ASSERT_EQ_INT(game_port->board_move_count_f(&session->board), 0);
+}
+
+static void test_handle_game_session_key_a_cursor_move_keeps_the_hint(void)
+{
+    run_session_test(check_a_cursor_move_keeps_the_hint);
+}
+
+static void check_an_ignored_key_keeps_the_hint(const GamePort* game_port,
+                                                GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    press(game_port, session, 'q', TEST_AFTER_HINT_AT);
+    press(game_port, session, TEST_RESIZE_KEY, TEST_AFTER_HINT_AT);
+    press(game_port, session, TEST_ERR_KEY, TEST_AFTER_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_an_ignored_key_keeps_the_hint(void)
+{
+    run_session_test(check_an_ignored_key_keeps_the_hint);
+}
+
+static void check_a_successful_undo_clears_the_hint(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    press(game_port, session, 'u', TEST_AFTER_HINT_AT);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_FALSE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_a_successful_undo_clears_the_hint(void)
+{
+    run_session_test(check_a_successful_undo_clears_the_hint);
+}
+
+static void check_an_empty_undo_keeps_the_hint(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    press(game_port, session, 'u', TEST_AFTER_HINT_AT);
+    ASSERT_TRUE(session->undo_notice);
+    ASSERT_TRUE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_an_empty_undo_keeps_the_hint(void)
+{
+    run_session_test(check_an_empty_undo_keeps_the_hint);
+}
+
+static void check_a_new_hint_replaces_the_old_one(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_EQ_INT(session->hint.index, TEST_FIRST_SLOT);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_AFTER_HINT_AT);
+    press(game_port, session, TEST_HINT_KEY, TEST_AFTER_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    ASSERT_EQ_INT(session->hint.target, HINT_TARGET_SLOT);
+    ASSERT_EQ_INT(session->hint.index, TEST_SECOND_SLOT);
+    ASSERT_EQ_INT(session->hint.value, fixture_strip[TEST_SECOND_SLOT]);
+}
+
+static void test_handle_game_session_key_a_new_hint_replaces_the_old_one(void)
+{
+    run_session_test(check_a_new_hint_replaces_the_old_one);
+}
+
+static void
+check_a_hint_never_pauses_or_freezes_the_timer(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_FALSE(session->timer.paused);
+    ASSERT_TRUE(session->timer.running);
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_START_TIME + 12));
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 12);
+}
+
+static void test_handle_game_session_key_a_hint_does_not_pause_the_timer(void)
+{
+    run_session_test(check_a_hint_never_pauses_or_freezes_the_timer);
+}
+
+static void check_h_is_ignored_in_the_pause_menu(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, 'p', TEST_HINT_AT);
+    ASSERT_TRUE(is_game_paused(&session->pause));
+    press(game_port, session, TEST_HINT_KEY, TEST_AFTER_HINT_AT);
+    press(game_port, session, TEST_HINT_KEY_UPPER, TEST_AFTER_HINT_AT);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_handle_game_session_key_h_is_ignored_in_the_pause_menu(void)
+{
+    run_session_test(check_h_is_ignored_in_the_pause_menu);
+}
+
+static void check_h_is_ignored_on_the_theme_screen(const GamePort* game_port,
+                                                   GameSession* session)
+{
+    press(game_port, session, 't', TEST_HINT_AT);
+    ASSERT_TRUE(is_theme_screen_shown(&session->pause));
+    press(game_port, session, TEST_HINT_KEY, TEST_AFTER_HINT_AT);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_handle_game_session_key_h_is_ignored_on_the_theme_screen(void)
+{
+    run_session_test(check_h_is_ignored_on_the_theme_screen);
+}
+
+static void check_h_is_ignored_on_the_victory_screen(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    complete_session(game_port, session);
+    press(game_port, session, TEST_HINT_KEY, TEST_COMPLETED_AT);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void
+test_handle_game_session_key_h_is_ignored_on_the_victory_screen(void)
+{
+    run_session_test(check_h_is_ignored_on_the_victory_screen);
+}
+
+static void
+check_counts_for_statistics_before_and_after_a_hint(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_game_session_counts_for_statistics_false_after_a_hint(void)
+{
+    run_session_test(check_counts_for_statistics_before_and_after_a_hint);
+}
+
+static void
+check_the_mark_outlives_a_move_and_an_undo(const GamePort* game_port,
+                                           GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    make_edit(game_port, session);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+    press(game_port, session, 'u', TEST_AFTER_HINT_AT);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void
+test_game_session_counts_for_statistics_stays_false_after_moves(void)
+{
+    run_session_test(check_the_mark_outlives_a_move_and_an_undo);
+}
+
+static void check_a_conflict_reply_does_not_mark(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, TEST_CONFLICTING_DIGIT, TEST_START_TIME);
+    ASSERT_TRUE(session->board.conflicts.count > 0);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_CONFLICTS);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_game_session_conflict_reply_does_not_mark_the_game(void)
+{
+    run_session_test(check_a_conflict_reply_does_not_mark);
+}
+
+static void check_a_full_board_reply_does_not_mark(const GamePort* game_port,
+                                                   GameSession* session)
+{
+    fill_without_confirming(game_port, session, TEST_START_TIME);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_BOARD_FULL);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_game_session_full_board_reply_does_not_mark_the_game(void)
+{
+    run_session_test(check_a_full_board_reply_does_not_mark);
+}
+
+static void check_a_solved_board_reply_does_not_mark(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    solve_session(game_port, session, TEST_SOLVED_AT);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    press(game_port, session, TEST_HINT_KEY, TEST_SOLVED_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SOLVED);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+}
+
+static void test_game_session_solved_board_reply_does_not_mark_the_game(void)
+{
+    run_session_test(check_a_solved_board_reply_does_not_mark);
+}
+
+static void
+check_a_hinted_game_completes_but_does_not_count(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    solve_session(game_port, session, TEST_SOLVED_AT);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_EQ_INT(session->timer.elapsed_seconds, 10);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+    ASSERT_FALSE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT + 1));
+}
+
+static void test_a_hinted_game_completes_but_does_not_count(void)
+{
+    run_session_test(check_a_hinted_game_completes_but_does_not_count);
+}
+
+static void
+check_an_unhinted_game_completes_and_counts(const GamePort* game_port,
+                                            GameSession* session)
+{
+    solve_session(game_port, session, TEST_SOLVED_AT);
+    ASSERT_TRUE(
+        update_game_session_timer(game_port, session, TEST_COMPLETED_AT));
+    ASSERT_TRUE(is_victory_shown(&session->victory));
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_an_unhinted_game_completes_and_counts(void)
+{
+    run_session_test(check_an_unhinted_game_completes_and_counts);
+}
+
+static void check_restart_by_key_clears_the_hint(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+    ASSERT_EQ_INT(press(game_port, session, 'n', TEST_RESTART_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_a_new_game_by_key_clears_the_hint_and_the_mark(void)
+{
+    run_session_test(check_restart_by_key_clears_the_hint);
+}
+
+static void check_restart_by_button_clears_the_hint(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    session->board.focus = BOARD_FOCUS_RESTART;
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_RESTART_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_the_restart_button_clears_the_hint_and_the_mark(void)
+{
+    run_session_test(check_restart_by_button_clears_the_hint);
+}
+
+static void
+check_a_confirmed_new_game_clears_the_hint(const GamePort* game_port,
+                                           GameSession* session)
+{
+    press(game_port, session, '2', TEST_START_TIME);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    press(game_port, session, 'n', TEST_AFTER_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+    ASSERT_EQ_INT(press(game_port, session, 'y', TEST_AFTER_HINT_AT),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_a_confirmed_new_game_clears_the_hint_and_the_mark(void)
+{
+    run_session_test(check_a_confirmed_new_game_clears_the_hint);
+}
+
+static void check_a_failed_restart_keeps_the_hint(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    fake_generate_fails = true;
+    ASSERT_EQ_INT(press(game_port, session, 'n', TEST_RESTART_AT),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_a_failed_new_game_keeps_the_hint_and_the_mark(void)
+{
+    run_session_test(check_a_failed_restart_keeps_the_hint);
+}
+
+static void check_a_new_game_gets_its_own_hint(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    press(game_port, session, 'n', TEST_RESTART_AT);
+    ASSERT_FALSE(session->hint_shown);
+    press(game_port, session, TEST_HINT_KEY, TEST_RESTART_AT + 1);
+    ASSERT_TRUE(session->hint_shown);
+    ASSERT_EQ_INT(session->hint.status, HINT_STATUS_SUGGESTION);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_a_new_game_can_be_hinted_again(void)
+{
+    run_session_test(check_a_new_game_gets_its_own_hint);
+}
+
+static void test_init_game_session_shows_no_hint(void)
+{
+    GamePort* game_port = create_fake_port();
+    ASSERT_NOT_NULL(game_port);
+    GameSession session;
+    memset(&session, TEST_GARBAGE_BYTE, sizeof session);
+    bool started = start_session(game_port, &session, TEST_START_TIME);
+    bool shown   = started && session.hint_shown;
+    bool counts =
+        started && game_session_counts_for_statistics(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_FALSE(shown);
+    ASSERT_TRUE(counts);
+}
+
+static void test_init_game_session_from_save_shows_no_hint(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    GameSession session;
+    memset(&session, TEST_GARBAGE_BYTE, sizeof session);
+    bool started =
+        init_game_session_from_save(game_port, &session, &saved, &board_codes,
+                                    &menu_codes, TEST_CONTINUED_AT);
+    bool shown = started && session.hint_shown;
+    bool counts =
+        started && game_session_counts_for_statistics(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_FALSE(shown);
+    ASSERT_TRUE(counts);
+}
+
+static void test_a_game_continued_from_a_hinted_save_does_not_count(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used = true;
+    GameSession session;
+    memset(&session, TEST_GARBAGE_BYTE, sizeof session);
+    bool started =
+        init_game_session_from_save(game_port, &session, &saved, &board_codes,
+                                    &menu_codes, TEST_CONTINUED_AT);
+    bool shown = started && session.hint_shown;
+    bool counts =
+        started && game_session_counts_for_statistics(game_port, &session);
+    end_game_session(game_port, &session);
+    destroy_game_port(game_port);
+    ASSERT_TRUE(started);
+    ASSERT_FALSE(shown);
+    ASSERT_FALSE(counts);
+}
+
+static void test_the_hint_mark_survives_capturing_and_continuing(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    GameSession first;
+    ASSERT_TRUE(start_session(game_port, &first, TEST_START_TIME));
+    press(game_port, &first, TEST_HINT_KEY, TEST_HINT_AT);
+    make_edit(game_port, &first);
+    SavedGame saved;
+    bool captured = capture_game_session(game_port, &first, &saved);
+    end_game_session(game_port, &first);
+    GameSession second;
+    bool continued = captured && init_game_session_from_save(
+                                     game_port, &second, &saved, &board_codes,
+                                     &menu_codes, TEST_CONTINUED_AT);
+    bool counts =
+        continued && game_session_counts_for_statistics(game_port, &second);
+    if (continued)
+    {
+        end_game_session(game_port, &second);
+    }
+    destroy_game_port(game_port);
+    ASSERT_TRUE(captured);
+    ASSERT_TRUE(saved.hint_used);
+    ASSERT_TRUE(continued);
+    ASSERT_FALSE(counts);
+}
+
+static void test_a_game_saved_without_a_hint_counts_when_continued(void)
+{
+    GamePort* game_port = create_save_port(DIFFICULTY_EASY);
+    ASSERT_NOT_NULL(game_port);
+    GameSession first;
+    ASSERT_TRUE(start_session(game_port, &first, TEST_START_TIME));
+    make_edit(game_port, &first);
+    SavedGame saved;
+    bool captured = capture_game_session(game_port, &first, &saved);
+    end_game_session(game_port, &first);
+    GameSession second;
+    bool continued = captured && init_game_session_from_save(
+                                     game_port, &second, &saved, &board_codes,
+                                     &menu_codes, TEST_CONTINUED_AT);
+    bool counts =
+        continued && game_session_counts_for_statistics(game_port, &second);
+    if (continued)
+    {
+        end_game_session(game_port, &second);
+    }
+    destroy_game_port(game_port);
+    ASSERT_TRUE(captured);
+    ASSERT_FALSE(saved.hint_used);
+    ASSERT_TRUE(continued);
+    ASSERT_TRUE(counts);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_game_session_starts_playing);
@@ -3018,5 +3582,36 @@ int main(void)
     RUN_TEST(test_a_continued_game_completes_once_with_restored_moves_and_time);
     RUN_TEST(
         test_handle_game_session_key_conflicting_entry_keeps_timer_and_pause);
+    RUN_TEST(test_handle_game_session_key_h_shows_a_hint);
+    RUN_TEST(test_handle_game_session_key_upper_h_shows_a_hint);
+    RUN_TEST(test_handle_game_session_key_hint_changes_nothing_but_the_hint);
+    RUN_TEST(test_handle_game_session_key_a_move_clears_the_hint);
+    RUN_TEST(test_handle_game_session_key_a_group_edit_clears_the_hint);
+    RUN_TEST(test_handle_game_session_key_a_cursor_move_keeps_the_hint);
+    RUN_TEST(test_handle_game_session_key_an_ignored_key_keeps_the_hint);
+    RUN_TEST(test_handle_game_session_key_a_successful_undo_clears_the_hint);
+    RUN_TEST(test_handle_game_session_key_an_empty_undo_keeps_the_hint);
+    RUN_TEST(test_handle_game_session_key_a_new_hint_replaces_the_old_one);
+    RUN_TEST(test_handle_game_session_key_a_hint_does_not_pause_the_timer);
+    RUN_TEST(test_handle_game_session_key_h_is_ignored_in_the_pause_menu);
+    RUN_TEST(test_handle_game_session_key_h_is_ignored_on_the_theme_screen);
+    RUN_TEST(test_handle_game_session_key_h_is_ignored_on_the_victory_screen);
+    RUN_TEST(test_game_session_counts_for_statistics_false_after_a_hint);
+    RUN_TEST(test_game_session_counts_for_statistics_stays_false_after_moves);
+    RUN_TEST(test_game_session_conflict_reply_does_not_mark_the_game);
+    RUN_TEST(test_game_session_full_board_reply_does_not_mark_the_game);
+    RUN_TEST(test_game_session_solved_board_reply_does_not_mark_the_game);
+    RUN_TEST(test_a_hinted_game_completes_but_does_not_count);
+    RUN_TEST(test_an_unhinted_game_completes_and_counts);
+    RUN_TEST(test_a_new_game_by_key_clears_the_hint_and_the_mark);
+    RUN_TEST(test_the_restart_button_clears_the_hint_and_the_mark);
+    RUN_TEST(test_a_confirmed_new_game_clears_the_hint_and_the_mark);
+    RUN_TEST(test_a_failed_new_game_keeps_the_hint_and_the_mark);
+    RUN_TEST(test_a_new_game_can_be_hinted_again);
+    RUN_TEST(test_init_game_session_shows_no_hint);
+    RUN_TEST(test_init_game_session_from_save_shows_no_hint);
+    RUN_TEST(test_a_game_continued_from_a_hinted_save_does_not_count);
+    RUN_TEST(test_the_hint_mark_survives_capturing_and_continuing);
+    RUN_TEST(test_a_game_saved_without_a_hint_counts_when_continued);
     return test_harness_result();
 }

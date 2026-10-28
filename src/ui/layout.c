@@ -14,8 +14,13 @@ static const int group_field_offsets[] = {SMALLER_OFFSET, OPERATION_OFFSET,
 
 static const char* const help_lines[LAYOUT_HELP_LINE_COUNT] = {
     "Arrows move   0-9 type   + x * operation   BACKSPACE delete",
-    "ENTER/SPACE press button   U undo   P pause   T theme",
+    "ENTER/SPACE press button   U undo   H hint   P pause   T theme",
     "N new game   M main menu   ESC leave without asking",
+};
+
+static const char* const uncounted_lines[LAYOUT_UNCOUNTED_LINE_COUNT] = {
+    "Hint used: this game will not",
+    "count for statistics.",
 };
 
 int layout_centered_offset(int container_size, int content_size)
@@ -201,4 +206,119 @@ bool layout_fits(int rows, int cols)
 int layout_theme_option_row(int theme)
 {
     return LAYOUT_THEME_FIRST_OPTION_ROW + theme;
+}
+
+LayoutPoint layout_hint_line_origin(int line)
+{
+    LayoutPoint origin = layout_timer_origin();
+    origin.y += LAYOUT_SIDE_PANEL_GAP_Y + line;
+    return origin;
+}
+
+LayoutPoint layout_uncounted_line_origin(int line)
+{
+    LayoutPoint origin = layout_hint_line_origin(LAYOUT_HINT_LINE_COUNT - 1);
+    origin.y += 1 + LAYOUT_UNCOUNTED_GAP_Y + line;
+    return origin;
+}
+
+int layout_side_panel_width(void)
+{
+    return LAYOUT_MIN_COLS - layout_timer_origin().x;
+}
+
+static char hint_operation_symbol(GroupOperation operation)
+{
+    return operation == GROUP_OPERATION_MULTIPLY ? LAYOUT_MULTIPLY_SYMBOL
+                                                 : LAYOUT_ADD_SYMBOL;
+}
+
+static void format_suggestion_line(const BoardHint* hint, int line, char* text,
+                                   size_t size)
+{
+    if (hint->target == HINT_TARGET_SLOT)
+    {
+        if (line == 0)
+        {
+            snprintf(text, size, "Hint: Available box %d", hint->index + 1);
+        }
+        else
+        {
+            snprintf(text, size, "enter %d", hint->value);
+        }
+        return;
+    }
+    if (line == 0)
+    {
+        snprintf(text, size, "Hint: row %d, column %d",
+                 hint->index / TETONOR_GRID_SIZE + 1,
+                 hint->index % TETONOR_GRID_SIZE + 1);
+    }
+    else
+    {
+        snprintf(text, size, "enter %d %c %d", hint->group.smaller,
+                 hint_operation_symbol(hint->group.operation),
+                 hint->group.greater);
+    }
+}
+
+/* The two lines of a reply that has no suggestion. */
+static void format_no_hint_line(HintStatus status, int line, char* text,
+                                size_t size)
+{
+    const char* first  = "";
+    const char* second = "";
+    switch (status)
+    {
+        case HINT_STATUS_SOLVED:
+            first = "No hint: puzzle already solved.";
+            break;
+        case HINT_STATUS_CONFLICTS:
+            if (line == 0)
+            {
+                snprintf(text, size, LAYOUT_CONFLICT_HINT_FORMAT,
+                         LAYOUT_CONFLICT_MARKER);
+            }
+            return;
+        case HINT_STATUS_BOARD_FULL:
+            first  = "No hint: every box is filled.";
+            second = "Press CONFIRM or clear a box.";
+            break;
+        case HINT_STATUS_NO_SUGGESTION:
+            first  = "No hint for these entries.";
+            second = "Some may be wrong: try undo.";
+            break;
+        case HINT_STATUS_SUGGESTION:
+            break;
+    }
+    snprintf(text, size, "%s", line == 0 ? first : second);
+}
+
+void layout_format_hint_line(const BoardHint* hint, int line, char* text,
+                             size_t size)
+{
+    if (size == 0)
+    {
+        return;
+    }
+    text[0] = '\0';
+    if (line < 0 || line >= LAYOUT_HINT_LINE_COUNT)
+    {
+        return;
+    }
+    if (hint->status == HINT_STATUS_SUGGESTION)
+    {
+        format_suggestion_line(hint, line, text, size);
+        return;
+    }
+    format_no_hint_line(hint->status, line, text, size);
+}
+
+const char* layout_uncounted_line(int index)
+{
+    if (index < 0 || index >= LAYOUT_UNCOUNTED_LINE_COUNT)
+    {
+        return "";
+    }
+    return uncounted_lines[index];
 }

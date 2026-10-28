@@ -5,6 +5,7 @@
 
 #include "board.h"
 #include "game_timer.h"
+#include "hint.h"
 #include "number_generation.h"
 #include "palette.h"
 #include "saved_game.h"
@@ -27,6 +28,10 @@ typedef struct
     bool (*is_board_locked_f)(const Board* board);
     bool (*board_progress_would_be_lost_f)(const Board* board);
     int (*board_move_count_f)(const Board* board);
+
+    /* Hint related functions */
+    BoardHint (*request_board_hint_f)(Board* board);
+    bool (*board_counts_for_statistics_f)(const Board* board);
 
     /* Game timer related functions */
     void (*start_game_timer_f)(GameTimer* timer, time_t now);

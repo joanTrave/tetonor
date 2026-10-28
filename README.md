@@ -131,6 +131,7 @@ A help area at the bottom of the game screen, left of the RESTART button, lists 
 | `N` | New game at the same difficulty (fresh board, empty undo history, timer at zero) |
 | `M` | Back to the main menu |
 | `U` | Undo the last edit |
+| `H` | Show a hint (does not change the board; the game then no longer counts for statistics) |
 | `T` | Choose a theme (see Themes) |
 | ESC | Leave the game at once, without asking |
 
@@ -146,7 +147,7 @@ There is one saved game: a new save replaces the previous one. When a saved game
 
 A continued game comes back with its difficulty, the same puzzle, every box, the CORRECT/WRONG state of the last CONFIRM, the number of moves and the elapsed time. The undo history and the cursor position are not saved: the undo history starts empty, and the cursor starts on the first box to fill, as in a new game. The time counts from the moment you continue, not while the program was closed or on a menu. Because the undo history starts empty, `N`, `M` and Abandon do not ask for confirmation right after continuing.
 
-Continuing does not delete the save. It stays until you save again (which replaces it) or until you solve that same game, which removes it; leaving or abandoning a game never removes it. Starting another game (`N`, RESTART or New game) ends the link to the save, so solving that other game keeps the saved one. Saving, continuing and discarding never change the statistics; a continued game is recorded once, when you solve it, like any other.
+Continuing does not delete the save. It stays until you save again (which replaces it) or until you solve that same game, which removes it; leaving or abandoning a game never removes it. Starting another game (`N`, RESTART or New game) ends the link to the save, so solving that other game keeps the saved one. Saving, continuing and discarding never change the statistics; a continued game is recorded once, when you solve it, like any other, unless a hint was shown in it.
 
 ### Victory screen
 
@@ -169,6 +170,16 @@ Two colour themes are available: Classic (the default, the dark look the game al
 Press `T` (or `t`) to choose a theme from the main menu, during a game, or on the pause menu. The theme screen lists the themes with the one in use marked "(current)": UP/DOWN move, SPACE or ENTER apply the highlighted theme at once (no restart), ESC or `T` go back without changing anything. During a game the board is hidden while the theme screen is open and shown again, redrawn in the chosen theme, when it closes. Choosing a theme changes nothing but the colours: the numbers you entered, the undo history, the result and the statistics stay as they were. The timer is paused while the theme screen is open, like in the pause menu, so choosing a theme costs no game time.
 
 On terminals with only 8 colours the themes use the closest basic colours, and without colour support both themes look the same (plain text with the usual bold and underline cues).
+
+### Hints
+
+Press `H` (or `h`) during a game to ask for a hint. The game looks for a complete valid answer that keeps every box you have already filled, and shows one thing to enter, under the timer: either an available number (`Hint: Available box 3`, `enter 7`) or a whole group of a matrix number (`Hint: row 2, column 4`, `enter 3 x 8`). The suggested box is framed by `?`. Hints start from the box under the cursor when it is an empty available box or an unfilled group, otherwise from the first unfilled group, then the first empty available box. Following the hints one after another solves the puzzle without ever creating a marked conflict.
+
+Asking for a hint changes nothing on the board: no box, cursor, undo history, move count, result or timer is touched, and the pause state stays as it was. The hint stays on screen until a move changes the boxes, you undo a move, a new game starts or you ask for another hint; moving the cursor keeps it.
+
+When there is no hint, the game says why: "No hint: puzzle already solved.", "No hint: fix the boxes marked !" (a marked conflict must be fixed first), "No hint: every box is filled." (press CONFIRM or clear a box) or "No hint for these entries." (no valid answer keeps them, so some may be wrong: try undo). These replies do not mark the game.
+
+A shown hint marks the game: "Hint used: this game will not count for statistics." appears under the hint, and solving the game records nothing in the statistics. The timer runs as usual and the victory screen is unchanged. The mark is kept when you save and continue the game, and starting a new game clears it.
 
 ### Timer and statistics
 
@@ -198,7 +209,7 @@ The saved game is the file `saved_game.txt` in the same per-user folder as the s
 | Linux | `~/.local/share/tetonor/saved_game.txt` |
 | macOS | `~/Library/Application Support/Tetonor/saved_game.txt` |
 
-It is a small text file that starts with `TETONOR-SAVE 1`. It holds the puzzle and its solution, so the game can check that a save is solvable before it loads it. A missing file means there is no saved game. An empty, truncated, edited or otherwise damaged file is ignored without any message (no "continue" line appears) and replaced by the next save; there is no checksum, so an edit that keeps the file consistent, such as a shorter time, is accepted. A failed write leaves the previous file untouched. If the folder cannot be created or written, the game still runs and keeps the saved game for the session, but nothing is stored. Delete the file to forget the saved game.
+It is a small text file that starts with `TETONOR-SAVE 2` (it records whether a hint was used; files that start with `TETONOR-SAVE 1`, written by earlier versions, still load, as a game without a hint). It holds the puzzle and its solution, so the game can check that a save is solvable before it loads it. A missing file means there is no saved game. An empty, truncated, edited or otherwise damaged file is ignored without any message (no "continue" line appears) and replaced by the next save; there is no checksum, so an edit that keeps the file consistent, such as a shorter time, is accepted. A failed write leaves the previous file untouched. If the folder cannot be created or written, the game still runs and keeps the saved game for the session, but nothing is stored. Delete the file to forget the saved game.
 
 ### Configuration file
 

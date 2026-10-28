@@ -250,11 +250,42 @@ static void test_load_saved_game_file_unsupported_version_is_corrupted(void)
 {
     const char* path = TEST_PATH("saved_version.txt");
     char text[TEST_TEXT_BUFFER_SIZE];
-    snprintf(text, sizeof text, "TETONOR-SAVE 2%s",
+    snprintf(text, sizeof text, "TETONOR-SAVE 3%s",
              strchr(SAVE_FIXTURE_TEXT, '\n'));
     ASSERT_TRUE(write_text_file(path, text));
     expect_load_result(path, SAVED_GAME_LOAD_CORRUPTED);
     remove_with_temporary(path);
+}
+
+static void test_load_saved_game_file_accepts_a_version_one_file(void)
+{
+    const char* path = TEST_PATH("saved_version_one.txt");
+    ASSERT_TRUE(write_text_file(path, SAVE_FIXTURE_TEXT_V1));
+    SavedGame expected;
+    build_saved_game_fixture(&expected);
+    SavedGame loaded;
+    build_other_saved_game(&loaded);
+    loaded.hint_used = true;
+    ASSERT_EQ_INT(load_saved_game_file(path, &loaded), SAVED_GAME_LOAD_LOADED);
+    remove_with_temporary(path);
+    ASSERT_FALSE(loaded.hint_used);
+    ASSERT_TRUE(saved_games_equal(&loaded, &expected));
+}
+
+static void test_save_saved_game_file_round_trips_the_hint_mark(void)
+{
+    const char* path = TEST_PATH("saved_hint_mark.txt");
+    remove_with_temporary(path);
+    SavedGame saved;
+    build_saved_game_fixture(&saved);
+    saved.hint_used = true;
+    ASSERT_TRUE(save_saved_game_file(path, &saved));
+    SavedGame loaded;
+    build_other_saved_game(&loaded);
+    ASSERT_EQ_INT(load_saved_game_file(path, &loaded), SAVED_GAME_LOAD_LOADED);
+    remove_with_temporary(path);
+    ASSERT_TRUE(loaded.hint_used);
+    ASSERT_TRUE(saved_games_equal(&loaded, &saved));
 }
 
 static void test_load_saved_game_file_inconsistent_content_is_corrupted(void)
@@ -729,6 +760,8 @@ int main(void)
     RUN_TEST(test_load_saved_game_file_truncated_file_is_corrupted);
     RUN_TEST(test_load_saved_game_file_oversized_file_is_corrupted);
     RUN_TEST(test_load_saved_game_file_unsupported_version_is_corrupted);
+    RUN_TEST(test_load_saved_game_file_accepts_a_version_one_file);
+    RUN_TEST(test_save_saved_game_file_round_trips_the_hint_mark);
     RUN_TEST(test_load_saved_game_file_inconsistent_content_is_corrupted);
     RUN_TEST(test_load_saved_game_file_accepts_a_crlf_file);
     RUN_TEST(test_load_saved_game_file_leaves_the_file_alone);

@@ -31,12 +31,9 @@ static const int save_fixture_hidden_counts[DIFFICULTY_COUNT] = {4, 8, 12};
 #define SAVE_FIXTURE_ELAPSED 754
 #define SAVE_FIXTURE_MOVES 7
 
-/* serialize_saved_game of build_saved_game_fixture, byte for byte. */
-#define SAVE_FIXTURE_TEXT                                                      \
-    "TETONOR-SAVE 1\n"                                                         \
-    "difficulty 0\n"                                                           \
-    "elapsed 754\n"                                                            \
-    "moves 7\n"                                                                \
+/* The lines of a save that follow the "moves" line (and, in version 2, the
+ * "hint-used" line). */
+#define SAVE_FIXTURE_BODY                                                      \
     "result pending\n"                                                         \
     "matrix 3 2 7 12 11 30 15 56 19 90 23 132 4 3 6 8\n"                       \
     "strip 1 - 2 2 3 - 4 4 - 6 7 8 - 10 11 12\n"                               \
@@ -46,6 +43,22 @@ static const int save_fixture_hidden_counts[DIFFICULTY_COUNT] = {4, 8, 12};
     "slots - 1 - - - - - - 5 - - - - - - -\n"                                  \
     "groups 1+2 -x- 12-- --- --- --- --- --- --- --- --- --- --- --- --- "     \
     "---\n"
+
+/* serialize_saved_game of build_saved_game_fixture, byte for byte. */
+#define SAVE_FIXTURE_TEXT                                                      \
+    "TETONOR-SAVE 2\n"                                                         \
+    "difficulty 0\n"                                                           \
+    "elapsed 754\n"                                                            \
+    "moves 7\n"                                                                \
+    "hint-used 0\n" SAVE_FIXTURE_BODY
+
+/* The same game in the legacy version 1 format, which has no "hint-used"
+ * line. */
+#define SAVE_FIXTURE_TEXT_V1                                                   \
+    "TETONOR-SAVE 1\n"                                                         \
+    "difficulty 0\n"                                                           \
+    "elapsed 754\n"                                                            \
+    "moves 7\n" SAVE_FIXTURE_BODY
 
 static inline void build_save_fixture_puzzle(NumberGeneration* puzzle,
                                              int difficulty)
