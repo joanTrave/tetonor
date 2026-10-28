@@ -10,8 +10,11 @@ GamePort* create_game_port(void)
         return NULL;
     }
     game_port->difficulty                     = TETONOR_DEFAULT_DIFFICULTY;
+    game_port->mode                           = GAME_MODE_NORMAL;
+    game_port->daily_date                     = (CalendarDate){0, 0, 0};
     game_port->generate_random_numbers_f      = &generate_random_numbers;
     game_port->free_number_generation_f       = &free_number_generation;
+    game_port->generate_daily_challenge_f     = &generate_daily_challenge;
     game_port->init_board_f                   = &init_board;
     game_port->apply_board_input_f            = &apply_board_input;
     game_port->undo_board_move_f              = &undo_board_move;
@@ -35,8 +38,7 @@ void destroy_game_port(GamePort* game_port)
 bool restart_game(const GamePort* game_port, Board* board,
                   NumberGeneration** puzzle)
 {
-    NumberGeneration* next =
-        game_port->generate_random_numbers_f(game_port->difficulty);
+    NumberGeneration* next = generate_game_puzzle(game_port);
     if (next == NULL)
     {
         return false;
@@ -45,4 +47,36 @@ bool restart_game(const GamePort* game_port, Board* board,
     game_port->free_number_generation_f(*puzzle);
     *puzzle = next;
     return true;
+}
+
+bool prepare_daily_challenge(GamePort* game_port, time_t now)
+{
+    CalendarDate date;
+    if (!utc_calendar_date(now, &date))
+    {
+        return false;
+    }
+    game_port->mode       = GAME_MODE_DAILY_CHALLENGE;
+    game_port->daily_date = date;
+    game_port->difficulty = daily_challenge_difficulty(date);
+    return true;
+}
+
+NumberGeneration* generate_game_puzzle(const GamePort* game_port)
+{
+    if (game_port->mode == GAME_MODE_DAILY_CHALLENGE)
+    {
+        return game_port->generate_daily_challenge_f(game_port->daily_date);
+    }
+    return game_port->generate_random_numbers_f(game_port->difficulty);
+}
+
+bool game_port_records_statistics(const GamePort* game_port)
+{
+    return game_port->mode == GAME_MODE_NORMAL;
+}
+
+bool game_port_allows_saving(const GamePort* game_port)
+{
+    return game_port->mode == GAME_MODE_NORMAL;
 }

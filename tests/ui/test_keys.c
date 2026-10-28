@@ -1268,13 +1268,50 @@ static void test_menu_result_from_key_keeps_the_other_mappings(void)
     ASSERT_EQ_INT(menu_result_from_key('S', TEST_ENTER_KEY), MENU_STATISTICS);
 }
 
+/* 'd'/'D' used to be neighbours ignored here too; they are now the daily
+ * key (see test_menu_result_from_key_d_opens_daily), so this plan amends the
+ * list instead of asserting a mapping the plan itself removes. */
 static void test_menu_result_from_key_neighbours_of_c_are_ignored(void)
 {
-    const int keys[] = {'b', 'B', 'v', 'V', 'x', 'X', 'd', 'D', 'f', 'F'};
+    const int keys[] = {'b', 'B', 'v', 'V', 'x', 'X', 'f', 'F'};
     for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
     {
         ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
     }
+}
+
+static void test_menu_result_from_key_d_opens_daily(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key('d', TEST_ENTER_KEY), MENU_DAILY);
+    ASSERT_EQ_INT(menu_result_from_key('D', TEST_ENTER_KEY), MENU_DAILY);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_DAILY, TEST_ENTER_KEY),
+                  MENU_DAILY);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_DAILY_UPPER, TEST_ENTER_KEY),
+                  MENU_DAILY);
+}
+
+static void test_menu_result_from_key_daily_is_its_own_result(void)
+{
+    ASSERT_TRUE(MENU_DAILY != MENU_START);
+    ASSERT_TRUE(MENU_DAILY != MENU_EXIT);
+    ASSERT_TRUE(MENU_DAILY != MENU_NONE);
+    ASSERT_TRUE(MENU_DAILY != MENU_STATISTICS);
+    ASSERT_TRUE(MENU_DAILY != MENU_THEME);
+    ASSERT_TRUE(MENU_DAILY != MENU_CONTINUE);
+    ASSERT_EQ_INT(MENU_START, 0);
+    ASSERT_EQ_INT(MENU_EXIT, 1);
+    ASSERT_EQ_INT(MENU_NONE, 2);
+    ASSERT_EQ_INT(MENU_STATISTICS, 3);
+}
+
+static void test_menu_result_from_key_d_keeps_the_other_mappings(void)
+{
+    ASSERT_EQ_INT(menu_result_from_key(' ', TEST_ENTER_KEY), MENU_START);
+    ASSERT_EQ_INT(menu_result_from_key(TETONOR_KEY_ESCAPE, TEST_ENTER_KEY),
+                  MENU_EXIT);
+    ASSERT_EQ_INT(menu_result_from_key('s', TEST_ENTER_KEY), MENU_STATISTICS);
+    ASSERT_EQ_INT(menu_result_from_key('t', TEST_ENTER_KEY), MENU_THEME);
+    ASSERT_EQ_INT(menu_result_from_key('c', TEST_ENTER_KEY), MENU_CONTINUE);
 }
 
 static void test_the_continue_key_is_ignored_on_every_other_screen(void)
@@ -1304,6 +1341,28 @@ static void test_the_save_key_is_ignored_outside_the_pause_menu(void)
     {
         ASSERT_EQ_INT(board_command_from_key(keys[i], &test_codes).kind,
                       BOARD_COMMAND_NONE);
+        ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
+                      PROMPT_COMMAND_NONE);
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+        ASSERT_EQ_INT(victory_menu_command_from_key(keys[i], &menu_codes),
+                      VICTORY_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(stats_menu_command_from_key(keys[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
+/* The daily key only means anything on the main menu: it stays unmapped on
+ * the board, the pause menu and the victory screen. */
+static void test_the_daily_key_is_ignored_outside_the_main_menu(void)
+{
+    const int keys[] = {'d', 'D'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(board_command_from_key(keys[i], &test_codes).kind,
+                      BOARD_COMMAND_NONE);
+        ASSERT_EQ_INT(pause_menu_command_from_key(keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_NONE);
         ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
                       PROMPT_COMMAND_NONE);
         ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
@@ -1405,7 +1464,11 @@ int main(void)
     RUN_TEST(test_menu_result_from_key_continue_is_its_own_result);
     RUN_TEST(test_menu_result_from_key_keeps_the_other_mappings);
     RUN_TEST(test_menu_result_from_key_neighbours_of_c_are_ignored);
+    RUN_TEST(test_menu_result_from_key_d_opens_daily);
+    RUN_TEST(test_menu_result_from_key_daily_is_its_own_result);
+    RUN_TEST(test_menu_result_from_key_d_keeps_the_other_mappings);
     RUN_TEST(test_the_continue_key_is_ignored_on_every_other_screen);
     RUN_TEST(test_the_save_key_is_ignored_outside_the_pause_menu);
+    RUN_TEST(test_the_daily_key_is_ignored_outside_the_main_menu);
     return test_harness_result();
 }

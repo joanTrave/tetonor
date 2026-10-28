@@ -11,7 +11,7 @@
 
 static BoardKeyCodes board_key_codes(void);
 static MenuKeyCodes menu_key_codes(void);
-static void draw_board(const GameSession* session);
+static void draw_board(const GamePort* game_port, const GameSession* session);
 static void save_session(const GamePort* game_port, GameSession* session,
                          SavedGameStore* saved_game_store);
 
@@ -39,7 +39,7 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
 
     timeout(TETONOR_READ_TIMEOUT_MS);
     int32_t drawn_seconds = session.timer.elapsed_seconds;
-    draw_board(&session);
+    draw_board(game_port, &session);
     for (;;)
     {
         int key    = getch();
@@ -72,19 +72,13 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
          * completion tries again. */
         if (update_game_session_timer(game_port, &session, now))
         {
-            record_stats_store_game(stats_store, game_port->difficulty,
-                                    session.timer.elapsed_seconds);
-            /* The saved game is solved: it is not worth keeping. A failed
-             * removal is ignored. */
-            if (session.linked_to_save)
-            {
-                discard_saved_game_store(saved_game_store);
-            }
+            record_game_session_completion(game_port, &session, stats_store,
+                                           saved_game_store);
         }
         if (keyed || session.timer.elapsed_seconds != drawn_seconds)
         {
             drawn_seconds = session.timer.elapsed_seconds;
-            draw_board(&session);
+            draw_board(game_port, &session);
         }
     }
 
@@ -135,7 +129,7 @@ static MenuKeyCodes menu_key_codes(void)
     return key_codes;
 }
 
-static void draw_board(const GameSession* session)
+static void draw_board(const GamePort* game_port, const GameSession* session)
 {
     erase();
     if (is_victory_shown(&session->victory))
@@ -148,12 +142,17 @@ static void draw_board(const GameSession* session)
     }
     else if (is_game_paused(&session->pause))
     {
-        print_pause_screen(&session->pause, session->timer.elapsed_seconds);
+        print_pause_screen(&session->pause, session->timer.elapsed_seconds,
+                           game_port_allows_saving(game_port));
     }
     else
     {
         print_layout(&session->board, session->undo_notice,
                      session->timer.elapsed_seconds);
+    }
+    if (game_port->mode == GAME_MODE_DAILY_CHALLENGE)
+    {
+        print_daily_challenge_badge(game_port->daily_date);
     }
     refresh();
 }

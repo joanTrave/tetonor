@@ -22,8 +22,7 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
                        const BoardKeyCodes* board_key_codes,
                        const MenuKeyCodes* menu_key_codes, time_t now)
 {
-    session->puzzle =
-        game_port->generate_random_numbers_f(game_port->difficulty);
+    session->puzzle = generate_game_puzzle(game_port);
     if (session->puzzle == NULL)
     {
         return false;
@@ -52,6 +51,10 @@ bool init_game_session_from_save(const GamePort* game_port,
 bool capture_game_session(const GamePort* game_port, const GameSession* session,
                           SavedGame* out)
 {
+    if (!game_port_allows_saving(game_port))
+    {
+        return false;
+    }
     return game_port->capture_saved_game_f(&session->board,
                                            session->timer.elapsed_seconds,
                                            game_port->difficulty, out);
@@ -244,7 +247,9 @@ perform_game_action(const GamePort* game_port, GameSession* session,
         case GAME_ACTION_MAIN_MENU:
             return GAME_SESSION_LEAVE;
         case GAME_ACTION_SAVE:
-            return GAME_SESSION_SAVE;
+            /* A daily challenge is never saved: the pause menu stays as is. */
+            return game_port_allows_saving(game_port) ? GAME_SESSION_SAVE
+                                                      : outcome;
         case GAME_ACTION_NONE:
             break;
     }
@@ -291,4 +296,22 @@ bool update_game_session_timer(const GamePort* game_port, GameSession* session,
                         game_port->difficulty,
                         game_port->board_move_count_f(&session->board));
     return true;
+}
+
+void record_game_session_completion(const GamePort* game_port,
+                                    const GameSession* session,
+                                    StatsStore* stats_store,
+                                    SavedGameStore* saved_game_store)
+{
+    if (game_port_records_statistics(game_port))
+    {
+        record_stats_store_game(stats_store, game_port->difficulty,
+                                session->timer.elapsed_seconds);
+    }
+    /* The saved game is solved: it is not worth keeping. A failed removal is
+     * ignored. */
+    if (session->linked_to_save)
+    {
+        discard_saved_game_store(saved_game_store);
+    }
 }

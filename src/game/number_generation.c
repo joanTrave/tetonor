@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "number_generation.h"
+#include "seeded_random.h"
 
 /* One row per Difficulty. Every range starts at 1, so no level generates 0.
  * The levels are ordered by structure (hidden entries, both-hidden pairs,
@@ -17,8 +18,11 @@ static const DifficultyProfile difficulty_profiles[DIFFICULTY_COUNT] = {
 };
 
 static int clamp_difficulty(int difficulty);
+static int draw_below(SeededRandom* random, int bound);
+static NumberGeneration* generate_numbers(int difficulty, SeededRandom* random);
 static void populate_numbers(NumberGeneration* number_generation,
-                             const DifficultyProfile* profile, bool hidden[]);
+                             const DifficultyProfile* profile, bool hidden[],
+                             SeededRandom* random);
 static void mark_hidden_members(bool hidden[], const int positions[],
                                 const DifficultyProfile* profile);
 static void sort_available_array(NumberGeneration* number_generation,
@@ -26,9 +30,10 @@ static void sort_available_array(NumberGeneration* number_generation,
 static void store_solution(NumberGeneration* number_generation);
 static void mask_available_array(NumberGeneration* number_generation,
                                  const bool hidden[]);
-static void fill_shuffled_positions(int positions[], size_t count);
+static void fill_shuffled_positions(int positions[], size_t count,
+                                    SeededRandom* random);
 static void swap_ints(int* a, int* b);
-static int random_value(const DifficultyProfile* profile);
+static int random_value(const DifficultyProfile* profile, SeededRandom* random);
 
 DifficultyProfile get_difficulty_profile(int difficulty)
 {
@@ -37,6 +42,25 @@ DifficultyProfile get_difficulty_profile(int difficulty)
 
 NumberGeneration* generate_random_numbers(int difficulty)
 {
+    return generate_numbers(difficulty, NULL);
+}
+
+NumberGeneration* generate_seeded_numbers(int difficulty, uint32_t seed)
+{
+    SeededRandom random;
+    init_seeded_random(&random, seed);
+    return generate_numbers(difficulty, &random);
+}
+
+/* The only place that calls rand(). A NULL random means the library rand()
+ * stream; otherwise the draw comes from the seeded stream. */
+static int draw_below(SeededRandom* random, int bound)
+{
+    return random == NULL ? rand() % bound : seeded_random_below(random, bound);
+}
+
+static NumberGeneration* generate_numbers(int difficulty, SeededRandom* random)
+{
     DifficultyProfile profile           = get_difficulty_profile(difficulty);
     NumberGeneration* number_generation = calloc(1, sizeof *number_generation);
     if (number_generation == NULL)
@@ -44,7 +68,7 @@ NumberGeneration* generate_random_numbers(int difficulty)
         return NULL;
     }
     bool hidden[TETONOR_CELL_COUNT] = {false};
-    populate_numbers(number_generation, &profile, hidden);
+    populate_numbers(number_generation, &profile, hidden, random);
     sort_available_array(number_generation, hidden);
     store_solution(number_generation);
     mask_available_array(number_generation, hidden);
@@ -109,20 +133,21 @@ static void set_solution_group(NumberGeneration* number_generation, int cell,
 }
 
 static void populate_numbers(NumberGeneration* number_generation,
-                             const DifficultyProfile* profile, bool hidden[])
+                             const DifficultyProfile* profile, bool hidden[],
+                             SeededRandom* random)
 {
     int positions[TETONOR_CELL_COUNT];
     int sum_matrix_positions[TETONOR_CELL_COUNT];
-    fill_shuffled_positions(positions, TETONOR_CELL_COUNT);
-    fill_shuffled_positions(sum_matrix_positions, TETONOR_CELL_COUNT);
+    fill_shuffled_positions(positions, TETONOR_CELL_COUNT, random);
+    fill_shuffled_positions(sum_matrix_positions, TETONOR_CELL_COUNT, random);
 
     /* Each pair of shuffled positions receives one pair of values: the
      * available array stores the values, the matrix stores their sum and
      * product. */
     for (int i = 0; i < TETONOR_PAIR_COUNT; i++)
     {
-        int value_1 = random_value(profile);
-        int value_2 = random_value(profile);
+        int value_1 = random_value(profile, random);
+        int value_2 = random_value(profile, random);
         set_available_value(number_generation, positions[2 * i], value_1);
         set_available_value(number_generation, positions[2 * i + 1], value_2);
         int sum_cell     = sum_matrix_positions[2 * i];
@@ -186,7 +211,8 @@ static void mask_available_array(NumberGeneration* number_generation,
     }
 }
 
-static void fill_shuffled_positions(int positions[], size_t count)
+static void fill_shuffled_positions(int positions[], size_t count,
+                                    SeededRandom* random)
 {
     for (size_t i = 0; i < count; i++)
     {
@@ -194,7 +220,7 @@ static void fill_shuffled_positions(int positions[], size_t count)
     }
     for (size_t i = 0; i + 1 < count; i++)
     {
-        size_t j = i + (size_t)rand() % (count - i);
+        size_t j = i + (size_t)draw_below(random, (int)(count - i));
         swap_ints(&positions[i], &positions[j]);
     }
 }
@@ -206,10 +232,10 @@ static void swap_ints(int* a, int* b)
     *b       = temp;
 }
 
-static int random_value(const DifficultyProfile* profile)
+static int random_value(const DifficultyProfile* profile, SeededRandom* random)
 {
     int value_count = profile->max_value - profile->min_value + 1;
-    return profile->min_value + rand() % value_count;
+    return profile->min_value + draw_below(random, value_count);
 }
 
 static void store_solution(NumberGeneration* number_generation)

@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "menu.h"
 #include "difficulty_menu.h"
@@ -16,6 +17,7 @@
 static const char menu_title[]         = "Welcome to Tetonor";
 static const char menu_continue_hint[] = LAYOUT_MENU_CONTINUE_HINT;
 static const char menu_start_hint[]    = "Press SPACE or ENTER to start game";
+static const char menu_daily_hint[]    = "Press D for today's daily challenge";
 static const char menu_stats_hint[]    = "Press S to view statistics";
 static const char menu_theme_hint[]    = "Press T to choose a theme";
 static const char menu_exit_hint[]     = "Press ESC to exit";
@@ -53,6 +55,9 @@ static int run_game_session(Difficulty difficulty, StatsStore* stats_store,
                             ConfigStore* config_store,
                             SavedGameStore* saved_game_store,
                             const SavedGame* resume);
+static int run_daily_challenge(StatsStore* stats_store,
+                               ConfigStore* config_store,
+                               SavedGameStore* saved_game_store);
 static int run_saved_game(StatsStore* stats_store, ConfigStore* config_store,
                           SavedGameStore* saved_game_store);
 
@@ -94,6 +99,12 @@ int ui_show_start_menu(StatsStore* stats_store, ConfigStore* config_store,
             clear_screen();
             status =
                 run_saved_game(stats_store, config_store, saved_game_store);
+        }
+        else if (menu_result == MENU_DAILY)
+        {
+            clear_screen();
+            status = run_daily_challenge(stats_store, config_store,
+                                         saved_game_store);
         }
         else
         {
@@ -156,6 +167,8 @@ static void draw_main_menu(WINDOW* win, bool can_continue)
     }
     mvwprintw(win, LAYOUT_MENU_START_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_start_hint);
+    mvwprintw(win, LAYOUT_MENU_DAILY_ROW, LAYOUT_MENU_TEXT_COL, "%s",
+              menu_daily_hint);
     mvwprintw(win, LAYOUT_MENU_STATS_ROW, LAYOUT_MENU_TEXT_COL, "%s",
               menu_stats_hint);
     mvwprintw(win, LAYOUT_MENU_THEME_ROW, LAYOUT_MENU_TEXT_COL, "%s",
@@ -407,4 +420,26 @@ static int run_saved_game(StatsStore* stats_store, ConfigStore* config_store,
     SavedGame saved = *stored;
     return run_game_session((Difficulty)saved.difficulty, stats_store,
                             config_store, saved_game_store, &saved);
+}
+
+/* Plays the daily challenge of the current UTC day. It starts at once: the
+ * puzzle and its difficulty come from the date. */
+static int run_daily_challenge(StatsStore* stats_store,
+                               ConfigStore* config_store,
+                               SavedGameStore* saved_game_store)
+{
+    GamePort* game_port = create_game_port();
+    if (game_port == NULL)
+    {
+        return EXIT_FAILURE;
+    }
+    if (!prepare_daily_challenge(game_port, time(NULL)))
+    {
+        destroy_game_port(game_port);
+        return EXIT_FAILURE;
+    }
+    int status =
+        ui_run(game_port, stats_store, config_store, saved_game_store, NULL);
+    destroy_game_port(game_port);
+    return status;
 }

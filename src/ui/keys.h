@@ -31,6 +31,8 @@ enum
     TETONOR_KEY_SAVE_UPPER       = 'S',
     TETONOR_KEY_CONTINUE         = 'c',
     TETONOR_KEY_CONTINUE_UPPER   = 'C',
+    TETONOR_KEY_DAILY            = 'd',
+    TETONOR_KEY_DAILY_UPPER      = 'D',
     TETONOR_KEY_PAUSE            = 'p',
     TETONOR_KEY_PAUSE_UPPER      = 'P',
     TETONOR_KEY_THEME            = 't',

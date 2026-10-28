@@ -430,7 +430,8 @@ static void print_panel_title(LayoutPoint panel, int width, int row,
              title);
 }
 
-static void print_pause_panel(const PauseState* pause, int rows, int cols)
+static void print_pause_panel(const PauseState* pause, bool can_save, int rows,
+                              int cols)
 {
     LayoutPoint panel = layout_centered_window_origin(
         rows, cols, LAYOUT_PAUSE_MENU_H, LAYOUT_PAUSE_MENU_W);
@@ -445,7 +446,9 @@ static void print_pause_panel(const PauseState* pause, int rows, int cols)
     }
     print_panel_text(panel, LAYOUT_PAUSE_NOTICE_ROW,
                      pause_save_notice_text(pause->save_notice));
-    print_panel_text(panel, LAYOUT_PAUSE_SAVE_ROW, LAYOUT_PAUSE_SAVE_HINT);
+    print_panel_text(panel, LAYOUT_PAUSE_SAVE_ROW,
+                     can_save ? LAYOUT_PAUSE_SAVE_HINT
+                              : LAYOUT_PAUSE_NO_SAVE_HINT);
     print_panel_text(panel, LAYOUT_PAUSE_CHOOSE_ROW, LAYOUT_PAUSE_CHOOSE_HINT);
     print_panel_text(panel, LAYOUT_PAUSE_BACK_ROW, LAYOUT_PAUSE_BACK_HINT);
 }
@@ -501,7 +504,8 @@ void print_victory_screen(const VictoryState* victory)
                      LAYOUT_VICTORY_SHORTCUT_HINT);
 }
 
-void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds)
+void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds,
+                        bool can_save)
 {
     int rows = 0;
     int cols = 0;
@@ -515,7 +519,7 @@ void print_pause_screen(const PauseState* pause, int32_t elapsed_seconds)
     switch (pause->screen)
     {
         case PAUSE_SCREEN_MENU:
-            print_pause_panel(pause, rows, cols);
+            print_pause_panel(pause, can_save, rows, cols);
             break;
         case PAUSE_SCREEN_PROMPT:
             print_prompt_panel(pause, rows, cols);
@@ -551,4 +555,21 @@ void print_theme_screen(const ThemeMenu* menu)
     }
     print_panel_text(panel, LAYOUT_THEME_CHOOSE_ROW, LAYOUT_THEME_CHOOSE_HINT);
     print_panel_text(panel, LAYOUT_THEME_BACK_ROW, LAYOUT_THEME_BACK_HINT);
+}
+
+void print_daily_challenge_badge(CalendarDate date)
+{
+    int rows = 0;
+    int cols = 0;
+    getmaxyx(stdscr, rows, cols);
+    char date_text[TETONOR_DATE_TEXT_SIZE];
+    if (!layout_fits(rows, cols) ||
+        !format_calendar_date(date, date_text, sizeof date_text))
+    {
+        return;
+    }
+    LayoutPoint origin = layout_daily_badge_origin();
+    attr_on(A_REVERSE | A_BOLD, NULL);
+    mvprintw(origin.y, origin.x, LAYOUT_DAILY_BADGE_FORMAT, date_text);
+    attr_off(A_REVERSE | A_BOLD, NULL);
 }

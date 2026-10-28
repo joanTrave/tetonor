@@ -1,6 +1,8 @@
 #ifndef TETONOR_NUMBER_GENERATION_H
 #define TETONOR_NUMBER_GENERATION_H
 
+#include <stdint.h>
+
 #include "operand_group.h"
 
 #define TETONOR_GRID_SIZE 4
@@ -52,6 +54,12 @@ DifficultyProfile get_difficulty_profile(int difficulty);
 /* difficulty is a Difficulty, and other values are clamped as in
  * get_difficulty_profile. Returns NULL on allocation failure. */
 NumberGeneration* generate_random_numbers(int difficulty);
+
+/* As generate_random_numbers, but every random draw comes from a SeededRandom
+ * started at seed instead of rand(): the same (difficulty, seed) always gives
+ * the same puzzle, on every platform, and rand()'s stream is not touched.
+ * Returns NULL on allocation failure. */
+NumberGeneration* generate_seeded_numbers(int difficulty, uint32_t seed);
 
 /* A heap copy of source. Returns NULL when source is NULL or allocation fails.
  * Release it with free_number_generation. */
