@@ -11,7 +11,7 @@
 
 static BoardKeyCodes board_key_codes(void);
 static MenuKeyCodes menu_key_codes(void);
-static void draw_board(const GameSession* session);
+static void draw_board(const GamePort* game_port, const GameSession* session);
 static void save_session(const GamePort* game_port, GameSession* session,
                          SavedGameStore* saved_game_store);
 
@@ -39,7 +39,7 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
 
     timeout(TETONOR_READ_TIMEOUT_MS);
     int32_t drawn_seconds = session.timer.elapsed_seconds;
-    draw_board(&session);
+    draw_board(game_port, &session);
     for (;;)
     {
         int key    = getch();
@@ -72,8 +72,12 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
          * completion tries again. */
         if (update_game_session_timer(game_port, &session, now))
         {
-            record_stats_store_game(stats_store, game_port->difficulty,
-                                    session.timer.elapsed_seconds);
+            /* A game that used a hint is not recorded. */
+            if (game_session_counts_for_statistics(game_port, &session))
+            {
+                record_stats_store_game(stats_store, game_port->difficulty,
+                                        session.timer.elapsed_seconds);
+            }
             /* The saved game is solved: it is not worth keeping. A failed
              * removal is ignored. */
             if (session.linked_to_save)
@@ -84,7 +88,7 @@ int ui_run(const GamePort* game_port, StatsStore* stats_store,
         if (keyed || session.timer.elapsed_seconds != drawn_seconds)
         {
             drawn_seconds = session.timer.elapsed_seconds;
-            draw_board(&session);
+            draw_board(game_port, &session);
         }
     }
 
@@ -135,7 +139,7 @@ static MenuKeyCodes menu_key_codes(void)
     return key_codes;
 }
 
-static void draw_board(const GameSession* session)
+static void draw_board(const GamePort* game_port, const GameSession* session)
 {
     erase();
     if (is_victory_shown(&session->victory))
@@ -153,6 +157,8 @@ static void draw_board(const GameSession* session)
     else
     {
         print_layout(&session->board, session->undo_notice,
+                     session->hint_shown ? &session->hint : NULL,
+                     !game_session_counts_for_statistics(game_port, session),
                      session->timer.elapsed_seconds);
     }
     refresh();

@@ -31,6 +31,8 @@ enum
     TETONOR_KEY_SAVE_UPPER       = 'S',
     TETONOR_KEY_CONTINUE         = 'c',
     TETONOR_KEY_CONTINUE_UPPER   = 'C',
+    TETONOR_KEY_HINT             = 'h',
+    TETONOR_KEY_HINT_UPPER       = 'H',
     TETONOR_KEY_PAUSE            = 'p',
     TETONOR_KEY_PAUSE_UPPER      = 'P',
     TETONOR_KEY_THEME            = 't',
@@ -68,6 +70,7 @@ typedef enum
     BOARD_COMMAND_EXIT,
     BOARD_COMMAND_INPUT,
     BOARD_COMMAND_UNDO,      /* revert the latest move */
+    BOARD_COMMAND_HINT,      /* show a hint; changes nothing on the board */
     BOARD_COMMAND_PAUSE,     /* open the pause menu */
     BOARD_COMMAND_NEW_GAME,  /* start another game at the same difficulty */
     BOARD_COMMAND_MAIN_MENU, /* leave for the main menu */

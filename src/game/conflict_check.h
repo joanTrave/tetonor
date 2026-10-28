@@ -20,8 +20,8 @@ typedef struct
     int count; /* flagged slots plus groups with a flagged box */
 } BoardConflicts;
 
-/* Writes the conflicts of the current entries: strip as build_strip makes it
- * (TETONOR_EMPTY_ENTRY when empty), groups one per matrix cell (row-major).
+/* Writes the conflicts of the current entries: strip as build_board_strip makes
+ * it (TETONOR_EMPTY_ENTRY when empty), groups one per matrix cell (row-major).
  * A slot is editable when puzzle->available_array holds TETONOR_HIDDEN_NUMBER.
  * Pure: reads only its inputs, writes only *conflicts. */
 void find_board_conflicts(const NumberGeneration* puzzle,

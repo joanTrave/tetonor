@@ -224,6 +224,10 @@ BoardCommand board_command_from_key(int key, const BoardKeyCodes* key_codes)
     {
         return make_board_command(BOARD_COMMAND_UNDO, 0, 0);
     }
+    if (key == TETONOR_KEY_HINT || key == TETONOR_KEY_HINT_UPPER)
+    {
+        return make_board_command(BOARD_COMMAND_HINT, 0, 0);
+    }
     if (key == TETONOR_KEY_PAUSE || key == TETONOR_KEY_PAUSE_UPPER)
     {
         return make_board_command(BOARD_COMMAND_PAUSE, 0, 0);

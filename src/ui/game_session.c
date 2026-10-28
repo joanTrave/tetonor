@@ -13,6 +13,7 @@ static void init_session_state(GameSession* session,
     session->theme = TETONOR_DEFAULT_PALETTE_THEME;
     init_theme_menu(&session->theme_menu, session->theme);
     session->undo_notice     = false;
+    session->hint_shown      = false;
     session->linked_to_save  = linked_to_save;
     session->board_key_codes = *board_key_codes;
     session->menu_key_codes  = *menu_key_codes;
@@ -72,6 +73,12 @@ void set_game_session_theme(GameSession* session, int theme)
                                              : TETONOR_DEFAULT_PALETTE_THEME;
 }
 
+bool game_session_counts_for_statistics(const GamePort* game_port,
+                                        const GameSession* session)
+{
+    return game_port->board_counts_for_statistics_f(&session->board);
+}
+
 void end_game_session(const GamePort* game_port, GameSession* session)
 {
     if (session->puzzle == NULL)
@@ -93,6 +100,7 @@ static bool restart_new_game(const GamePort* game_port, GameSession* session,
     }
     game_port->start_game_timer_f(&session->timer, now);
     init_victory_state(&session->victory);
+    session->hint_shown     = false;
     session->linked_to_save = false;
     return true;
 }
@@ -108,6 +116,35 @@ static void open_session_theme_screen(GameSession* session)
 {
     init_theme_menu(&session->theme_menu, session->theme);
     open_theme_screen(&session->pause);
+}
+
+/* Undoes the latest move unless the board is locked. A move that changed the
+ * entries ends the hint on screen; an empty undo shows the undo notice. */
+static void undo_move(const GamePort* game_port, GameSession* session)
+{
+    if (game_port->is_board_locked_f(&session->board))
+    {
+        return;
+    }
+    session->undo_notice = !game_port->undo_board_move_f(&session->board);
+    if (!session->undo_notice)
+    {
+        session->hint_shown = false;
+    }
+}
+
+/* Applies one board input. A hint on screen stays only while the entries stay
+ * the same, i.e. while the move count does. */
+static BoardEvent apply_input(const GamePort* game_port, GameSession* session,
+                              BoardInput input)
+{
+    int moves_before = game_port->board_move_count_f(&session->board);
+    BoardEvent event = game_port->apply_board_input_f(&session->board, input);
+    if (game_port->board_move_count_f(&session->board) != moves_before)
+    {
+        session->hint_shown = false;
+    }
+    return event;
 }
 
 /* Applies a board key while playing. Sets *outcome for ESC and for the RESTART
@@ -136,15 +173,15 @@ static GameAction handle_board_key(const GamePort* game_port,
             return request_game_action(&session->pause, GAME_ACTION_MAIN_MENU,
                                        progress_at_risk(game_port, session));
         case BOARD_COMMAND_UNDO:
-            if (!game_port->is_board_locked_f(&session->board))
-            {
-                session->undo_notice =
-                    !game_port->undo_board_move_f(&session->board);
-            }
+            undo_move(game_port, session);
+            break;
+        case BOARD_COMMAND_HINT:
+            session->hint = game_port->request_board_hint_f(&session->board);
+            session->hint_shown = true;
             break;
         case BOARD_COMMAND_INPUT:
-            if (game_port->apply_board_input_f(
-                    &session->board, command.input) == BOARD_EVENT_RESTART &&
+            if (apply_input(game_port, session, command.input) ==
+                    BOARD_EVENT_RESTART &&
                 restart_new_game(game_port, session, now))
             {
                 *outcome = GAME_SESSION_RESTARTED;

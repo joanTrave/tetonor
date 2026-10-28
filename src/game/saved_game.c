@@ -11,22 +11,25 @@
 #define SAVED_GAME_ADD_TOKEN "+"
 #define SAVED_GAME_MULTIPLY_TOKEN "x"
 
-/* The only format version; any other header is rejected (no migration). */
-static const char saved_game_header[]   = "TETONOR-SAVE 1";
+/* Version 2 is written. Version 1 (no "hint-used" line) is still read, as "no
+ * hint used"; any other header is rejected. */
+static const char saved_game_header_legacy[]  = "TETONOR-SAVE 1";
+static const char saved_game_header_current[] = "TETONOR-SAVE 2";
 
-static const char key_difficulty[]      = "difficulty";
-static const char key_elapsed[]         = "elapsed";
-static const char key_moves[]           = "moves";
-static const char key_result[]          = "result";
-static const char key_matrix[]          = "matrix";
-static const char key_strip[]           = "strip";
-static const char key_solution[]        = "solution";
-static const char key_solution_groups[] = "solution-groups";
-static const char key_slots[]           = "slots";
-static const char key_groups[]          = "groups";
+static const char key_difficulty[]            = "difficulty";
+static const char key_elapsed[]               = "elapsed";
+static const char key_moves[]                 = "moves";
+static const char key_hint_used[]             = "hint-used";
+static const char key_result[]                = "result";
+static const char key_matrix[]                = "matrix";
+static const char key_strip[]                 = "strip";
+static const char key_solution[]              = "solution";
+static const char key_solution_groups[]       = "solution-groups";
+static const char key_slots[]                 = "slots";
+static const char key_groups[]                = "groups";
 
-static const char result_word_pending[] = "pending";
-static const char result_word_wrong[]   = "wrong";
+static const char result_word_pending[]       = "pending";
+static const char result_word_wrong[]         = "wrong";
 
 /* How a list token spells "nothing here", and the value it stands for. */
 typedef struct
@@ -209,6 +212,7 @@ bool capture_saved_game(const Board* board, int32_t elapsed_seconds,
     captured.difficulty      = difficulty;
     captured.elapsed_seconds = elapsed_seconds;
     captured.move_count      = board_move_count(board);
+    captured.hint_used       = board->hint_used;
     captured.puzzle          = *board->puzzle;
     for (int i = 0; i < TETONOR_CELL_COUNT; i++)
     {
@@ -331,10 +335,12 @@ static bool put_group_line(OutputBuffer* buffer, const char* key,
 
 static bool put_status_lines(OutputBuffer* buffer, const SavedGame* saved)
 {
-    return put_text(buffer, saved_game_header) && put_text(buffer, "\n") &&
+    return put_text(buffer, saved_game_header_current) &&
+           put_text(buffer, "\n") &&
            put_scalar_line(buffer, key_difficulty, saved->difficulty) &&
            put_scalar_line(buffer, key_elapsed, (int)saved->elapsed_seconds) &&
            put_scalar_line(buffer, key_moves, saved->move_count) &&
+           put_scalar_line(buffer, key_hint_used, saved->hint_used ? 1 : 0) &&
            put_result_line(buffer, saved->entries.result);
 }
 
@@ -490,11 +496,34 @@ static bool read_group_list(TextCursor* cursor, const char* key,
     return true;
 }
 
+/* The header line. Sets *has_hint_line for the current version. */
+static bool read_header(TextCursor* cursor, bool* has_hint_line)
+{
+    *has_hint_line = read_text_literal(cursor, saved_game_header_current);
+    return (*has_hint_line ||
+            read_text_literal(cursor, saved_game_header_legacy)) &&
+           read_line_end(cursor, false);
+}
+
+/* "hint-used <0|1>" line of version 2; version 1 has none. */
+static bool read_hint_line(TextCursor* cursor, bool has_hint_line,
+                           bool* hint_used)
+{
+    int mark = 0;
+    if (has_hint_line && !(read_scalar(cursor, key_hint_used, 1, &mark) &&
+                           read_line_end(cursor, false)))
+    {
+        return false;
+    }
+    *hint_used = mark != 0;
+    return true;
+}
+
 static bool read_status_lines(TextCursor* cursor, SavedGame* saved)
 {
-    int elapsed = 0;
-    if (!read_text_literal(cursor, saved_game_header) ||
-        !read_line_end(cursor, false) ||
+    int elapsed        = 0;
+    bool has_hint_line = false;
+    if (!read_header(cursor, &has_hint_line) ||
         !read_scalar(cursor, key_difficulty, DIFFICULTY_HARD,
                      &saved->difficulty) ||
         !read_line_end(cursor, false) ||
@@ -503,6 +532,7 @@ static bool read_status_lines(TextCursor* cursor, SavedGame* saved)
         !read_line_end(cursor, false) ||
         !read_scalar(cursor, key_moves, INT_MAX, &saved->move_count) ||
         !read_line_end(cursor, false) ||
+        !read_hint_line(cursor, has_hint_line, &saved->hint_used) ||
         !read_result(cursor, &saved->entries.result) ||
         !read_line_end(cursor, false))
     {
@@ -576,6 +606,7 @@ NumberGeneration* restore_saved_game(const SavedGame* saved, Board* board,
         return NULL;
     }
     restore_board(board, puzzle, &saved->entries, saved->move_count);
+    board->hint_used = saved->hint_used;
     restore_game_timer(timer, saved->elapsed_seconds, now);
     return puzzle;
 }
