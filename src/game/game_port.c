@@ -18,6 +18,7 @@ GamePort* create_game_port(void)
     game_port->init_board_f                   = &init_board;
     game_port->apply_board_input_f            = &apply_board_input;
     game_port->undo_board_move_f              = &undo_board_move;
+    game_port->redo_board_move_f              = &redo_board_move;
     game_port->is_board_locked_f              = &is_board_locked;
     game_port->board_progress_would_be_lost_f = &board_progress_would_be_lost;
     game_port->board_move_count_f             = &board_move_count;

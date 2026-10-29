@@ -32,9 +32,10 @@ typedef struct
     PaletteTheme theme;   /* active theme, recorded only */
     ThemeMenu theme_menu; /* meaningful while the theme screen is shown */
     bool undo_notice;     /* set by an empty undo, cleared by the next key */
+    bool redo_notice;     /* set by an empty redo, cleared by the next key */
     BoardHint hint;       /* the reply to the latest hint request */
     bool hint_shown;      /* hint is on screen: set by a hint request, cleared
-                             by a move, a successful undo or a new game */
+                             by a move, a successful undo or redo, or a new game */
     bool linked_to_save;  /* this game is the saved one: completing it
                              discards the save */
     BoardKeyCodes board_key_codes;
@@ -51,8 +52,8 @@ bool init_game_session(const GamePort* game_port, GameSession* session,
 
 /* As init_game_session, but over saved: the puzzle, entries, move count and
  * elapsed time come from the save through restore_saved_game_f (the undo
- * history starts empty), and the session is linked to the save. Returns false,
- * owning nothing, when restoring fails. */
+ * and redo histories start empty), and the session is linked to the save.
+ * Returns false, owning nothing, when restoring fails. */
 bool init_game_session_from_save(const GamePort* game_port,
                                  GameSession* session, const SavedGame* saved,
                                  const BoardKeyCodes* board_key_codes,

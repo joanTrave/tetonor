@@ -683,11 +683,11 @@ static void test_layout_help_lines_texts(void)
                        "Arrows move   0-9 type   + x * "
                        "operation   BACKSPACE delete") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(1),
-                       "ENTER/SPACE press button   U undo   H hint   P pause "
-                       "  T theme") == 0);
+                       "ENTER/SPACE press button   U undo   R redo   H hint   "
+                       "P pause") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(2),
-                       "N new game   M main menu   ESC leave without asking") ==
-                0);
+                       "N new game   M main menu   T theme   ESC leave "
+                       "without asking") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(-1), "") == 0);
     ASSERT_TRUE(strcmp(layout_help_line(LAYOUT_HELP_LINE_COUNT), "") == 0);
 }
@@ -1039,6 +1039,62 @@ static void test_layout_help_lines_name_theme_shortcut(void)
     {
         ASSERT_TRUE((int)strlen(layout_help_line(i)) <= layout_help_width());
     }
+}
+
+static void test_layout_redo_notice_text(void)
+{
+    ASSERT_TRUE(strcmp(LAYOUT_REDO_EMPTY_MESSAGE, "Nothing to redo") == 0);
+}
+
+static void test_layout_redo_notice_fits_the_undo_notice_slot(void)
+{
+    ASSERT_TRUE(strlen(LAYOUT_REDO_EMPTY_MESSAGE) <=
+                strlen(LAYOUT_UNDO_EMPTY_MESSAGE));
+    LayoutPoint origin   = layout_undo_notice_origin();
+    LayoutPoint conflict = layout_conflict_notice_origin();
+    int last_column = origin.x + (int)strlen(LAYOUT_REDO_EMPTY_MESSAGE) - 1;
+    ASSERT_TRUE(last_column < conflict.x);
+    ASSERT_TRUE(last_column <= LAYOUT_MIN_COLS - 1);
+    ASSERT_TRUE(origin.y <= LAYOUT_MIN_ROWS - 1);
+}
+
+static void test_layout_redo_notice_does_not_overlap_result_texts(void)
+{
+    LayoutPoint message = layout_result_message_origin();
+    LayoutPoint origin  = layout_undo_notice_origin();
+    ASSERT_TRUE(origin.x > message.x + (int)strlen(LAYOUT_CORRECT_MESSAGE));
+    ASSERT_TRUE(origin.x > message.x + (int)strlen(LAYOUT_WRONG_MESSAGE));
+}
+
+static void test_layout_help_lines_name_the_redo_shortcut(void)
+{
+    ASSERT_TRUE(help_mentions("R redo"));
+    ASSERT_TRUE(help_mentions("U undo   R redo"));
+    ASSERT_TRUE(help_mentions("T theme"));
+    ASSERT_TRUE(help_mentions("H hint"));
+    ASSERT_TRUE(help_mentions("P pause"));
+    ASSERT_TRUE(help_mentions("N new game"));
+    ASSERT_TRUE(help_mentions("M main menu"));
+    ASSERT_TRUE(help_mentions("ESC leave"));
+}
+
+static void test_layout_help_redo_shares_the_line_of_undo(void)
+{
+    int undo_line = -1;
+    int redo_line = -1;
+    for (int i = 0; i < LAYOUT_HELP_LINE_COUNT; i++)
+    {
+        if (strstr(layout_help_line(i), "U undo") != NULL)
+        {
+            undo_line = i;
+        }
+        if (strstr(layout_help_line(i), "R redo") != NULL)
+        {
+            redo_line = i;
+        }
+    }
+    ASSERT_TRUE(undo_line >= 0);
+    ASSERT_EQ_INT(redo_line, undo_line);
 }
 
 static void test_layout_main_menu_continue_row_is_the_free_row(void)
@@ -1584,5 +1640,10 @@ int main(void)
     RUN_TEST(test_layout_format_hint_line_first_line_is_never_empty);
     RUN_TEST(test_layout_uncounted_lines_texts);
     RUN_TEST(test_layout_uncounted_lines_fit_the_side_panel);
+    RUN_TEST(test_layout_redo_notice_text);
+    RUN_TEST(test_layout_redo_notice_fits_the_undo_notice_slot);
+    RUN_TEST(test_layout_redo_notice_does_not_overlap_result_texts);
+    RUN_TEST(test_layout_help_lines_name_the_redo_shortcut);
+    RUN_TEST(test_layout_help_redo_shares_the_line_of_undo);
     return test_harness_result();
 }

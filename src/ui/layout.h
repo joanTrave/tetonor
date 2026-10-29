@@ -37,6 +37,10 @@
 #define LAYOUT_WRONG_MESSAGE "WRONG ANSWER"
 #define LAYOUT_RESULT_MESSAGE_W ((int)(sizeof LAYOUT_CORRECT_MESSAGE - 1))
 #define LAYOUT_UNDO_EMPTY_MESSAGE "Nothing to undo"
+/* Drawn at layout_undo_notice_origin(); must not be longer than the undo
+ * message, because layout_conflict_notice_origin reserves exactly that width.
+ */
+#define LAYOUT_REDO_EMPTY_MESSAGE "Nothing to redo"
 #define LAYOUT_NOTICE_GAP_X                                                    \
     2 /* blank columns between the result and a notice */
 #define LAYOUT_CONFLICT_MARKER '!' /* frames a conflicting group or slot */
@@ -189,8 +193,8 @@ LayoutPoint layout_restart_button_origin(void);
 /* Row/column of the result message, below the RESTART button. */
 LayoutPoint layout_result_message_origin(void);
 
-/* Row/column of the nothing-to-undo notice: on the result row, right of the
- * longer result text. */
+/* Row/column of the nothing-to-undo or nothing-to-redo notice: on the result
+ * row, right of the longer result text. */
 LayoutPoint layout_undo_notice_origin(void);
 
 /* Row/column of the conflict notice: on the result row, right of the

@@ -67,8 +67,9 @@ typedef struct
     BoardResult result;
 } BoardSnapshot;
 
-/* The board entries before each of the latest moves, newest on top. A ring
- * buffer: recording into a full history overwrites the oldest entry. */
+/* A stack of board entries, newest on top, holding at most
+ * TETONOR_UNDO_HISTORY_DEPTH. A ring buffer: recording into a full history
+ * overwrites the oldest entry. */
 typedef struct
 {
     BoardSnapshot entries[TETONOR_UNDO_HISTORY_DEPTH];
@@ -91,22 +92,26 @@ typedef struct
                                                   the groups */
     BoardConflicts conflicts; /* derived from the strip and the groups */
     MoveHistory history; /* this game's undoable moves; emptied by init_board */
+    MoveHistory redo_history; /* entries undone since the latest move, newest
+                                 on top; emptied by init_board and by every
+                                 move. history.count + redo_history.count never
+                                 exceeds TETONOR_UNDO_HISTORY_DEPTH */
     int move_count; /* moves of this game (see board_move_count); init_board
-                       resets it, undo keeps it */
+                       resets it, undo and redo keep it */
     bool hint_used; /* a hint was shown in this game; init_board clears it,
-                       undo keeps it */
+                       undo and redo keep it */
 } Board;
 
 /* Starts a fresh entry session over puzzle. Also fills the slot usages
- * and conflicts. Empties the move history and zeroes the move count. Acquires
- * nothing: Board is a fixed-size value, so there is no matching
+ * and conflicts. Empties the undo and redo histories and zeroes the move count.
+ * Acquires nothing: Board is a fixed-size value, so there is no matching
  * release function. */
 void init_board(Board* board, const NumberGeneration* puzzle);
 
 /* init_board, then slot values, group boxes and result from entries and the
  * move count from move_count; slot usages and conflicts are recomputed and
- * the move history stays empty. Requires entries consistent with puzzle (see
- * is_saved_game_valid). */
+ * the undo and redo histories stay empty. Requires entries consistent with
+ * puzzle (see is_saved_game_valid). */
 void restore_board(Board* board, const NumberGeneration* puzzle,
                    const BoardSnapshot* entries, int move_count);
 
@@ -115,7 +120,8 @@ void restore_board(Board* board, const NumberGeneration* puzzle,
  * every group box is filled. Recomputes slot usages and conflicts after every
  * input. Records the entries before every input that changes a slot value or a
  * group box as one undoable move, keeping the latest
- * TETONOR_UNDO_HISTORY_DEPTH, and counts it in move_count. While the board is
+ * TETONOR_UNDO_HISTORY_DEPTH, counts it in move_count, and discards every move
+ * that could be redone. While the board is
  * locked, digits, deletes, operations and ACTIVATE on the submit control change
  * nothing and return BOARD_EVENT_NONE. ACTIVATE on the restart control returns
  * BOARD_EVENT_RESTART and leaves the board unchanged; every other input returns
@@ -125,9 +131,19 @@ BoardEvent apply_board_input(Board* board, BoardInput input);
 /* Reverts the latest move recorded by apply_board_input: slot values, group
  * boxes and result return to what they were just before it, and slot usages and
  * conflicts are recomputed. Cursor, group cursor and field, and focus are not
- * touched. Returns false, leaving the board unchanged, when there is no move to
- * undo or the board is locked. */
+ * touched. The reverted entries become the newest redoable move. Returns
+ * false, leaving the board unchanged, when there is no move to undo or the
+ * board is locked. */
 bool undo_board_move(Board* board);
+
+/* Re-applies the move most recently reverted by undo_board_move: slot values,
+ * group boxes and result return to what they were just before that undo, and
+ * slot usages and conflicts are recomputed; the move becomes undoable again.
+ * Cursor, group cursor and field, focus, move count and hint_used are not
+ * touched. Returns false, leaving the board unchanged, when nothing was undone
+ * since the latest move, init_board or restore_board, or the board is locked.
+ */
+bool redo_board_move(Board* board);
 
 /* True while CORRECT ANSWER is shown: the board then takes only cursor
  * movement and the restart control, until init_board starts a new game. */
@@ -142,8 +158,8 @@ bool board_progress_would_be_lost(const Board* board);
 void build_board_strip(const Board* board, int strip[TETONOR_CELL_COUNT]);
 
 /* Inputs of this game that changed a slot value or a group box, i.e. the ones
- * recorded as undoable moves. Undo does not decrease it; init_board resets it
- * to 0; it saturates at INT_MAX. */
+ * recorded as undoable moves. Undo and redo do not change it; init_board resets
+ * it to 0; it saturates at INT_MAX. */
 int board_move_count(const Board* board);
 
 #endif

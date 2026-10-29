@@ -38,6 +38,7 @@ typedef struct
     void (*init_board_f)(Board* board, const NumberGeneration* puzzle);
     BoardEvent (*apply_board_input_f)(Board* board, BoardInput input);
     bool (*undo_board_move_f)(Board* board);
+    bool (*redo_board_move_f)(Board* board);
     bool (*is_board_locked_f)(const Board* board);
     bool (*board_progress_would_be_lost_f)(const Board* board);
     int (*board_move_count_f)(const Board* board);

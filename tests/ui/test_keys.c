@@ -1445,6 +1445,103 @@ static void test_the_hint_key_is_ignored_on_every_other_screen(void)
     }
 }
 
+#define ASSERT_REDO_COMMAND(key, codes)                                        \
+    do                                                                         \
+    {                                                                          \
+        BoardCommand command_under_test =                                      \
+            board_command_from_key((key), &(codes));                           \
+        ASSERT_EQ_INT(command_under_test.kind, BOARD_COMMAND_REDO);            \
+        ASSERT_EQ_INT(command_under_test.input.kind, 0);                       \
+        ASSERT_EQ_INT(command_under_test.input.digit, 0);                      \
+        ASSERT_EQ_INT(command_under_test.input.operation,                      \
+                      GROUP_OPERATION_NONE);                                   \
+    } while (0)
+
+static void test_board_command_from_key_redo_key_codes_are_r(void)
+{
+    ASSERT_EQ_INT(TETONOR_KEY_REDO, 'r');
+    ASSERT_EQ_INT(TETONOR_KEY_REDO_UPPER, 'R');
+}
+
+static void test_board_command_from_key_r_redoes(void)
+{
+    ASSERT_REDO_COMMAND('r', test_codes);
+    ASSERT_REDO_COMMAND('R', test_codes);
+    ASSERT_REDO_COMMAND('r', unavailable_codes);
+    ASSERT_REDO_COMMAND('R', unavailable_codes);
+    ASSERT_REDO_COMMAND('r', vertical_unavailable_codes);
+    ASSERT_REDO_COMMAND('R', vertical_unavailable_codes);
+}
+
+static void test_board_command_from_key_redo_has_exactly_its_keys(void)
+{
+    const BoardKeyCodes* code_sets[] = {&test_codes, &unavailable_codes,
+                                        &vertical_unavailable_codes};
+    const int redo[]                 = {'r', 'R'};
+    for (size_t i = 0; i < sizeof code_sets / sizeof code_sets[0]; i++)
+    {
+        assert_command_keys_are_exactly(BOARD_COMMAND_REDO, redo, 2,
+                                        code_sets[i]);
+    }
+}
+
+static void test_board_command_from_key_redo_neighbours_are_ignored(void)
+{
+    const int keys[] = {'q', 'Q', 's', 'S'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_NO_COMMAND(keys[i], test_codes);
+        ASSERT_NO_COMMAND(keys[i], unavailable_codes);
+    }
+}
+
+static void test_board_command_kind_redo_differs_from_every_other_kind(void)
+{
+    const BoardCommandKind others[] = {
+        BOARD_COMMAND_NONE,     BOARD_COMMAND_EXIT,      BOARD_COMMAND_INPUT,
+        BOARD_COMMAND_UNDO,     BOARD_COMMAND_HINT,      BOARD_COMMAND_PAUSE,
+        BOARD_COMMAND_NEW_GAME, BOARD_COMMAND_MAIN_MENU, BOARD_COMMAND_THEME};
+    for (size_t i = 0; i < sizeof others / sizeof others[0]; i++)
+    {
+        ASSERT_TRUE(BOARD_COMMAND_REDO != others[i]);
+    }
+}
+
+static void test_board_command_from_key_redo_keeps_existing_mappings(void)
+{
+    ASSERT_SIMPLE_COMMAND('u', test_codes, BOARD_COMMAND_UNDO);
+    ASSERT_SIMPLE_COMMAND('U', test_codes, BOARD_COMMAND_UNDO);
+    ASSERT_SIMPLE_COMMAND('h', test_codes, BOARD_COMMAND_HINT);
+    ASSERT_SIMPLE_COMMAND('p', test_codes, BOARD_COMMAND_PAUSE);
+    ASSERT_SIMPLE_COMMAND('n', test_codes, BOARD_COMMAND_NEW_GAME);
+    ASSERT_SIMPLE_COMMAND('m', test_codes, BOARD_COMMAND_MAIN_MENU);
+    ASSERT_SIMPLE_COMMAND('t', test_codes, BOARD_COMMAND_THEME);
+    ASSERT_SIMPLE_COMMAND(TETONOR_KEY_ESCAPE, test_codes, BOARD_COMMAND_EXIT);
+    ASSERT_INPUT_COMMAND(TEST_ENTER_KEY, test_codes, BOARD_INPUT_ACTIVATE);
+    ASSERT_DIGIT_COMMAND('5', test_codes, 5);
+}
+
+static void test_other_screens_ignore_the_redo_key(void)
+{
+    const int keys[] = {'r', 'R'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(menu_result_from_key(keys[i], TEST_ENTER_KEY), MENU_NONE);
+        ASSERT_EQ_INT(difficulty_menu_command_from_key(keys[i], &menu_codes),
+                      DIFFICULTY_COMMAND_NONE);
+        ASSERT_EQ_INT(pause_menu_command_from_key(keys[i], &menu_codes),
+                      PAUSE_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(prompt_command_from_key(keys[i], &menu_codes),
+                      PROMPT_COMMAND_NONE);
+        ASSERT_EQ_INT(victory_menu_command_from_key(keys[i], &menu_codes),
+                      VICTORY_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(theme_menu_command_from_key(keys[i], &menu_codes),
+                      THEME_MENU_COMMAND_NONE);
+        ASSERT_EQ_INT(stats_menu_command_from_key(keys[i]),
+                      STATS_MENU_COMMAND_NONE);
+    }
+}
+
 int main(void)
 {
     RUN_TEST(test_menu_result_from_key_space_starts);
@@ -1547,5 +1644,12 @@ int main(void)
     RUN_TEST(test_board_command_from_key_hint_has_exactly_its_keys);
     RUN_TEST(test_board_command_from_key_hint_keeps_existing_mappings);
     RUN_TEST(test_the_hint_key_is_ignored_on_every_other_screen);
+    RUN_TEST(test_board_command_from_key_redo_key_codes_are_r);
+    RUN_TEST(test_board_command_from_key_r_redoes);
+    RUN_TEST(test_board_command_from_key_redo_has_exactly_its_keys);
+    RUN_TEST(test_board_command_from_key_redo_neighbours_are_ignored);
+    RUN_TEST(test_board_command_kind_redo_differs_from_every_other_kind);
+    RUN_TEST(test_board_command_from_key_redo_keeps_existing_mappings);
+    RUN_TEST(test_other_screens_ignore_the_redo_key);
     return test_harness_result();
 }
