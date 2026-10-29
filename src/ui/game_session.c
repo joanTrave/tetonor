@@ -13,6 +13,7 @@ static void init_session_state(GameSession* session,
     session->theme = TETONOR_DEFAULT_PALETTE_THEME;
     init_theme_menu(&session->theme_menu, session->theme);
     session->undo_notice     = false;
+    session->redo_notice     = false;
     session->hint_shown      = false;
     session->linked_to_save  = linked_to_save;
     session->board_key_codes = *board_key_codes;
@@ -121,16 +122,20 @@ static void open_session_theme_screen(GameSession* session)
     open_theme_screen(&session->pause);
 }
 
-/* Undoes the latest move unless the board is locked. A move that changed the
- * entries ends the hint on screen; an empty undo shows the undo notice. */
-static void undo_move(const GamePort* game_port, GameSession* session)
+/* Steps the move history through step_f unless the board is locked. A step
+ * that changed the entries ends the hint on screen; an empty step sets
+ * *empty_notice. */
+static void step_session_history(const GamePort* game_port,
+                                 GameSession* session,
+                                 bool (*step_f)(Board* board),
+                                 bool* empty_notice)
 {
     if (game_port->is_board_locked_f(&session->board))
     {
         return;
     }
-    session->undo_notice = !game_port->undo_board_move_f(&session->board);
-    if (!session->undo_notice)
+    *empty_notice = !step_f(&session->board);
+    if (!*empty_notice)
     {
         session->hint_shown = false;
     }
@@ -176,7 +181,14 @@ static GameAction handle_board_key(const GamePort* game_port,
             return request_game_action(&session->pause, GAME_ACTION_MAIN_MENU,
                                        progress_at_risk(game_port, session));
         case BOARD_COMMAND_UNDO:
-            undo_move(game_port, session);
+            step_session_history(game_port, session,
+                                 game_port->undo_board_move_f,
+                                 &session->undo_notice);
+            break;
+        case BOARD_COMMAND_REDO:
+            step_session_history(game_port, session,
+                                 game_port->redo_board_move_f,
+                                 &session->redo_notice);
             break;
         case BOARD_COMMAND_HINT:
             session->hint = game_port->request_board_hint_f(&session->board);
@@ -301,6 +313,7 @@ GameSessionOutcome handle_game_session_key(const GamePort* game_port,
     GameSessionOutcome outcome = GAME_SESSION_CONTINUE;
     GameAction action          = GAME_ACTION_NONE;
     session->undo_notice       = false;
+    session->redo_notice       = false;
     if (is_victory_shown(&session->victory))
     {
         action = handle_victory_key(session, key);

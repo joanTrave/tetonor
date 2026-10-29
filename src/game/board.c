@@ -35,6 +35,7 @@ static void clear_move_history(MoveHistory* history);
 static void push_move(MoveHistory* history, const BoardSnapshot* snapshot);
 static void pop_move(MoveHistory* history, BoardSnapshot* out);
 static void count_move(Board* board);
+static bool step_move_history(Board* board, MoveHistory* from, MoveHistory* to);
 
 void init_board(Board* board, const NumberGeneration* puzzle)
 {
@@ -54,6 +55,7 @@ void init_board(Board* board, const NumberGeneration* puzzle)
     board->focus  = board->cursor != TETONOR_NO_CURSOR ? BOARD_FOCUS_SLOT
                                                        : BOARD_FOCUS_GROUP;
     clear_move_history(&board->history);
+    clear_move_history(&board->redo_history);
     board->move_count = 0;
     board->hint_used  = false;
     refresh_derived_entries(board);
@@ -116,6 +118,7 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
     if (entries_changed(board, &before))
     {
         push_move(&board->history, &before);
+        clear_move_history(&board->redo_history);
         count_move(board);
     }
     refresh_derived_entries(board);
@@ -124,15 +127,12 @@ BoardEvent apply_board_input(Board* board, BoardInput input)
 
 bool undo_board_move(Board* board)
 {
-    if (is_board_locked(board) || board->history.count == 0)
-    {
-        return false;
-    }
-    BoardSnapshot snapshot;
-    pop_move(&board->history, &snapshot);
-    restore_snapshot(board, &snapshot);
-    refresh_derived_entries(board);
-    return true;
+    return step_move_history(board, &board->history, &board->redo_history);
+}
+
+bool redo_board_move(Board* board)
+{
+    return step_move_history(board, &board->redo_history, &board->history);
 }
 
 bool is_board_locked(const Board* board)
@@ -529,6 +529,30 @@ static bool entries_changed(const Board* board, const BoardSnapshot* snapshot)
         }
     }
     return false;
+}
+
+/* Moves the newest entry of from onto the board and the board's current
+ * entries onto to; recomputes the derived entries. False, changing nothing,
+ * when from is empty or the board is locked.
+ * Invariant: history.count + redo_history.count <= TETONOR_UNDO_HISTORY_DEPTH.
+ * A move adds at most one entry to history and empties redo_history; a step
+ * moves exactly one entry between them, so pushing onto the destination never
+ * overwrites. Redo cannot lock the board: undo is refused while locked, so
+ * every redo entry holds a result other than CORRECT. */
+static bool step_move_history(Board* board, MoveHistory* from, MoveHistory* to)
+{
+    if (is_board_locked(board) || from->count == 0)
+    {
+        return false;
+    }
+    BoardSnapshot current;
+    take_snapshot(board, &current);
+    BoardSnapshot target;
+    pop_move(from, &target);
+    push_move(to, &current);
+    restore_snapshot(board, &target);
+    refresh_derived_entries(board);
+    return true;
 }
 
 static void clear_move_history(MoveHistory* history)

@@ -303,7 +303,7 @@ static bool session_is_fresh(const GameSession* session, time_t now)
            session->timer.elapsed_seconds == 0 && session->timer.running &&
            !session->timer.paused && session->timer.last_tick == now &&
            session->pause.screen == PAUSE_SCREEN_PLAYING &&
-           !session->undo_notice;
+           !session->undo_notice && !session->redo_notice;
 }
 
 static void test_init_game_session_starts_playing(void)
@@ -3794,6 +3794,637 @@ static void test_a_game_saved_without_a_hint_counts_when_continued(void)
     ASSERT_TRUE(counts);
 }
 
+#define TEST_REDO_AT (TEST_START_TIME + 40)
+
+/* What an edit changes, without the history bookkeeping (the ring index of a
+ * history is not part of the behaviour). */
+static bool redo_entries_match(const Board* first, const Board* second)
+{
+    if (first->result != second->result ||
+        first->conflicts.count != second->conflicts.count)
+    {
+        return false;
+    }
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        if (first->slots[i].editable != second->slots[i].editable ||
+            (first->slots[i].editable &&
+             first->slots[i].value != second->slots[i].value) ||
+            first->slot_usages[i] != second->slot_usages[i])
+        {
+            return false;
+        }
+    }
+    return groups_match(first->groups, second->groups);
+}
+
+static bool redo_positions_match(const Board* first, const Board* second)
+{
+    return first->cursor == second->cursor &&
+           first->group_cursor == second->group_cursor &&
+           first->group_field == second->group_field &&
+           first->focus == second->focus;
+}
+
+static void assert_no_notice(const GameSession* session)
+{
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_FALSE(session->redo_notice);
+}
+
+static void check_redo_reapplies_the_undone_edit(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    int moves    = moves_of(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.slots[TEST_FIRST_SLOT].value,
+                  TETONOR_EMPTY_ENTRY);
+    GameTimer timer = session->timer;
+
+    ASSERT_EQ_INT(press(game_port, session, 'r', TEST_REDO_AT),
+                  GAME_SESSION_CONTINUE);
+    assert_no_notice(session);
+    ASSERT_EQ_INT(session->board.slots[TEST_FIRST_SLOT].value,
+                  TEST_TYPED_DIGIT - '0');
+    ASSERT_TRUE(redo_entries_match(&session->board, &edited));
+    ASSERT_TRUE(redo_positions_match(&session->board, &edited));
+    ASSERT_EQ_INT(moves_of(game_port, session), moves);
+    ASSERT_EQ_INT(session->board.history.count, 1);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_TRUE(timers_match(&session->timer, &timer));
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+}
+
+static void test_handle_game_session_key_redo_reapplies_the_undone_edit(void)
+{
+    run_session_test(check_redo_reapplies_the_undone_edit);
+}
+
+static void check_upper_case_redo_works(const GamePort* game_port,
+                                        GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    press(game_port, session, 'U', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'R', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    assert_no_notice(session);
+    ASSERT_TRUE(redo_entries_match(&session->board, &edited));
+}
+
+static void test_handle_game_session_key_upper_case_redo_works(void)
+{
+    run_session_test(check_upper_case_redo_works);
+}
+
+static void check_redo_replays_edits_one_per_key(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    make_edit(game_port, session);
+    Board first = session->board;
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    Board second = session->board;
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 2);
+
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(redo_entries_match(&session->board, &first));
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(redo_entries_match(&session->board, &second));
+    assert_no_notice(session);
+    ASSERT_EQ_INT(moves_of(game_port, session), 2);
+
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_TRUE(redo_entries_match(&session->board, &second));
+}
+
+static void test_handle_game_session_key_redo_replays_edits_one_per_key(void)
+{
+    run_session_test(check_redo_replays_edits_one_per_key);
+}
+
+static void check_a_successful_redo_clears_the_hint(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    ASSERT_TRUE(session->hint_shown);
+    press(game_port, session, 'r', TEST_AFTER_HINT_AT);
+    assert_no_notice(session);
+    ASSERT_FALSE(session->hint_shown);
+    ASSERT_TRUE(session->board.hint_used);
+    ASSERT_FALSE(game_session_counts_for_statistics(game_port, session));
+}
+
+static void test_handle_game_session_key_a_successful_redo_clears_the_hint(void)
+{
+    run_session_test(check_a_successful_redo_clears_the_hint);
+}
+
+static void check_an_empty_redo_keeps_the_hint(const GamePort* game_port,
+                                               GameSession* session)
+{
+    press(game_port, session, TEST_HINT_KEY, TEST_HINT_AT);
+    press(game_port, session, 'r', TEST_AFTER_HINT_AT);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_TRUE(session->hint_shown);
+}
+
+static void test_handle_game_session_key_an_empty_redo_keeps_the_hint(void)
+{
+    run_session_test(check_an_empty_redo_keeps_the_hint);
+}
+
+static void check_an_empty_redo_shows_the_notice(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    Board before = session->board;
+    ASSERT_EQ_INT(press(game_port, session, 'r', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+    ASSERT_EQ_INT(moves_of(game_port, session), 0);
+}
+
+static void test_handle_game_session_key_an_empty_redo_shows_the_notice(void)
+{
+    run_session_test(check_an_empty_redo_shows_the_notice);
+}
+
+static void
+check_redo_after_a_plain_edit_shows_the_notice(const GamePort* game_port,
+                                               GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_TRUE(boards_match(&session->board, &edited));
+}
+
+static void
+test_handle_game_session_key_redo_without_an_undo_shows_the_notice(void)
+{
+    run_session_test(check_redo_after_a_plain_edit_shows_the_notice);
+}
+
+static void
+check_redo_notice_is_cleared_by_the_next_key(const GamePort* game_port,
+                                             GameSession* session)
+{
+    ASSERT_EQ_INT(press(game_port, session, 'R', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    ASSERT_FALSE(session->redo_notice);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, 'q', TEST_START_TIME);
+    ASSERT_FALSE(session->redo_notice);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, TEST_TYPED_DIGIT, TEST_START_TIME);
+    ASSERT_FALSE(session->redo_notice);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, 'p', TEST_START_TIME);
+    ASSERT_FALSE(session->redo_notice);
+}
+
+static void test_handle_game_session_key_redo_notice_cleared_by_next_key(void)
+{
+    run_session_test(check_redo_notice_is_cleared_by_the_next_key);
+}
+
+static void
+check_only_the_latest_empty_step_shows_its_notice(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_TRUE(session->undo_notice);
+    ASSERT_FALSE(session->redo_notice);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_TRUE(session->undo_notice);
+    ASSERT_FALSE(session->redo_notice);
+}
+
+static void test_handle_game_session_key_only_one_notice_shows_at_a_time(void)
+{
+    run_session_test(check_only_the_latest_empty_step_shows_its_notice);
+}
+
+static void
+check_the_undo_notice_is_not_set_by_a_successful_redo(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_TRUE(session->undo_notice);
+    press(game_port, session, 'r', TEST_START_TIME);
+    assert_no_notice(session);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    press(game_port, session, 'u', TEST_START_TIME);
+    assert_no_notice(session);
+}
+
+static void test_handle_game_session_key_notices_follow_the_latest_key(void)
+{
+    run_session_test(check_the_undo_notice_is_not_set_by_a_successful_redo);
+}
+
+static void check_a_new_edit_discards_the_redo(const GamePort* game_port,
+                                               GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    Board edited = session->board;
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_TRUE(boards_match(&session->board, &edited));
+    ASSERT_EQ_INT(session->board.slots[TEST_FIRST_SLOT].value,
+                  TEST_OTHER_DIGIT - '0');
+}
+
+static void test_handle_game_session_key_a_new_edit_discards_the_redo(void)
+{
+    run_session_test(check_a_new_edit_discards_the_redo);
+}
+
+static void check_moving_the_cursor_keeps_the_redo(const GamePort* game_port,
+                                                   GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_ENTER_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    Board moved_cursor = session->board;
+    press(game_port, session, 'r', TEST_START_TIME);
+    assert_no_notice(session);
+    ASSERT_TRUE(redo_entries_match(&session->board, &edited));
+    ASSERT_TRUE(redo_positions_match(&session->board, &moved_cursor));
+}
+
+static void test_handle_game_session_key_moving_the_cursor_keeps_the_redo(void)
+{
+    run_session_test(check_moving_the_cursor_keeps_the_redo);
+}
+
+static void check_redo_is_ignored_in_the_pause_menu(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'p', TEST_START_TIME + 2);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_MENU);
+    Board paused     = session->board;
+    GameTimer timer  = session->timer;
+    PauseState menu  = session->pause;
+    const int keys[] = {'r', 'R'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME + 99),
+                      GAME_SESSION_CONTINUE);
+        assert_no_notice(session);
+        ASSERT_TRUE(boards_match(&session->board, &paused));
+        ASSERT_TRUE(timers_match(&session->timer, &timer));
+        ASSERT_TRUE(pause_states_match(&session->pause, &menu));
+    }
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+
+    press(game_port, session, TEST_ESCAPE, TEST_START_TIME + 100);
+    press(game_port, session, 'r', TEST_START_TIME + 100);
+    ASSERT_TRUE(redo_entries_match(&session->board, &edited));
+}
+
+static void test_handle_game_session_key_redo_is_ignored_in_the_pause_menu(void)
+{
+    run_session_test(check_redo_is_ignored_in_the_pause_menu);
+}
+
+static void check_redo_is_ignored_in_the_prompt(const GamePort* game_port,
+                                                GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'N', TEST_START_TIME + 2);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    Board before     = session->board;
+    PauseState state = session->pause;
+    const int keys[] = {'r', 'R'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME + 3),
+                      GAME_SESSION_CONTINUE);
+        assert_no_notice(session);
+        ASSERT_TRUE(boards_match(&session->board, &before));
+        ASSERT_TRUE(pause_states_match(&session->pause, &state));
+    }
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+}
+
+static void test_handle_game_session_key_redo_is_ignored_in_the_prompt(void)
+{
+    run_session_test(check_redo_is_ignored_in_the_prompt);
+}
+
+static void check_redo_is_ignored_on_a_solved_board(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    solve_session(game_port, session, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    Board solved     = session->board;
+    const int keys[] = {'r', 'R'};
+    for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++)
+    {
+        ASSERT_EQ_INT(press(game_port, session, keys[i], TEST_START_TIME),
+                      GAME_SESSION_CONTINUE);
+        assert_no_notice(session);
+        ASSERT_TRUE(boards_match(&session->board, &solved));
+        ASSERT_EQ_INT(session->board.result, BOARD_RESULT_CORRECT);
+    }
+}
+
+static void test_handle_game_session_key_redo_is_ignored_on_a_solved_board(void)
+{
+    run_session_test(check_redo_is_ignored_on_a_solved_board);
+}
+
+static void
+check_a_continued_game_has_nothing_to_redo(const GamePort* game_port,
+                                           GameSession* session)
+{
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_FALSE(session->redo_notice);
+    Board before = session->board;
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+    ASSERT_FALSE(session->undo_notice);
+    ASSERT_TRUE(boards_match(&session->board, &before));
+}
+
+static void test_init_game_session_from_save_has_nothing_to_redo(void)
+{
+    run_continued_session_test(check_a_continued_game_has_nothing_to_redo);
+}
+
+static void
+check_a_started_session_has_nothing_to_redo(const GamePort* game_port,
+                                            GameSession* session)
+{
+    (void)game_port;
+    ASSERT_FALSE(session->redo_notice);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+}
+
+static void test_init_game_session_has_nothing_to_redo(void)
+{
+    run_session_test(check_a_started_session_has_nothing_to_redo);
+}
+
+static void check_new_game_key_empties_the_redo(const GamePort* game_port,
+                                                GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    ASSERT_EQ_INT(press(game_port, session, 'N', 500), GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_TRUE(session_is_fresh(session, 500));
+    press(game_port, session, 'r', 500);
+    ASSERT_TRUE(session->redo_notice);
+}
+
+static void test_handle_game_session_key_new_game_empties_the_redo(void)
+{
+    run_session_test(check_new_game_key_empties_the_redo);
+}
+
+static void check_confirmed_new_game_empties_the_redo(const GamePort* game_port,
+                                                      GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    press(game_port, session, 'N', TEST_START_TIME);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    ASSERT_EQ_INT(press(game_port, session, 'y', 500), GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_TRUE(session_is_fresh(session, 500));
+}
+
+static void test_handle_game_session_key_confirmed_new_game_empties_redo(void)
+{
+    run_session_test(check_confirmed_new_game_empties_the_redo);
+}
+
+static void check_restart_button_empties_the_redo(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, TEST_RIGHT_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_OTHER_DIGIT, TEST_START_TIME);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.focus, BOARD_FOCUS_RESTART);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, 300),
+                  GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_TRUE(session_is_fresh(session, 300));
+}
+
+static void test_handle_game_session_key_restart_button_empties_the_redo(void)
+{
+    run_session_test(check_restart_button_empties_the_redo);
+}
+
+static void check_redo_works_in_a_daily_challenge(const GamePort* game_port,
+                                                  GameSession* session)
+{
+    make_edit(game_port, session);
+    Board edited = session->board;
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'r', TEST_START_TIME);
+    assert_no_notice(session);
+    ASSERT_TRUE(redo_entries_match(&session->board, &edited));
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(session->redo_notice);
+}
+
+static void test_handle_game_session_key_redo_works_in_a_daily_challenge(void)
+{
+    run_daily_session_test(check_redo_works_in_a_daily_challenge);
+}
+
+static void same_saved_entries(const SavedGame* first, const SavedGame* second)
+{
+    ASSERT_EQ_INT(first->entries.result, second->entries.result);
+    ASSERT_EQ_INT(first->move_count, second->move_count);
+    ASSERT_EQ_INT(first->elapsed_seconds, second->elapsed_seconds);
+    ASSERT_EQ_INT(first->hint_used, second->hint_used);
+    ASSERT_TRUE(groups_match(first->entries.groups, second->entries.groups));
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        ASSERT_EQ_INT(first->entries.slot_values[i],
+                      second->entries.slot_values[i]);
+    }
+}
+
+static void
+check_undo_and_redo_leave_the_save_as_it_was(const GamePort* game_port,
+                                             GameSession* session)
+{
+    make_edit(game_port, session);
+    SavedGame after_edit;
+    ASSERT_TRUE(capture_game_session(game_port, session, &after_edit));
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'r', TEST_START_TIME);
+    SavedGame after_redo;
+    ASSERT_TRUE(capture_game_session(game_port, session, &after_redo));
+    same_saved_entries(&after_redo, &after_edit);
+    ASSERT_TRUE(is_saved_game_valid(&after_redo));
+}
+
+static void test_capture_game_session_after_undo_and_redo_matches_the_edit(void)
+{
+    run_save_session_test(DIFFICULTY_EASY,
+                          check_undo_and_redo_leave_the_save_as_it_was);
+}
+
+static void check_a_save_taken_while_undone_has_the_undone_entries(
+    const GamePort* game_port, GameSession* session)
+{
+    SavedGame empty;
+    ASSERT_TRUE(capture_game_session(game_port, session, &empty));
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    SavedGame undone;
+    ASSERT_TRUE(capture_game_session(game_port, session, &undone));
+    ASSERT_EQ_INT(undone.entries.result, empty.entries.result);
+    ASSERT_TRUE(groups_match(undone.entries.groups, empty.entries.groups));
+    for (int i = 0; i < TETONOR_CELL_COUNT; i++)
+    {
+        ASSERT_EQ_INT(undone.entries.slot_values[i],
+                      empty.entries.slot_values[i]);
+    }
+    ASSERT_EQ_INT(undone.move_count, 1);
+}
+
+static void test_capture_game_session_after_undo_ignores_the_redo_branch(void)
+{
+    run_save_session_test(
+        DIFFICULTY_EASY,
+        check_a_save_taken_while_undone_has_the_undone_entries);
+}
+
+static void
+check_new_game_after_redo_asks_for_confirmation(const GamePort* game_port,
+                                                GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_TRUE(game_port->board_progress_would_be_lost_f(&session->board));
+    ASSERT_EQ_INT(press(game_port, session, 'n', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+    ASSERT_EQ_INT(fake_generate_calls, 1);
+}
+
+static void test_handle_game_session_key_new_game_after_redo_asks_first(void)
+{
+    run_session_test(check_new_game_after_redo_asks_for_confirmation);
+}
+
+static void
+check_main_menu_after_redo_asks_for_confirmation(const GamePort* game_port,
+                                                 GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'r', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'm', TEST_START_TIME),
+                  GAME_SESSION_CONTINUE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PROMPT);
+}
+
+static void test_handle_game_session_key_main_menu_after_redo_asks_first(void)
+{
+    run_session_test(check_main_menu_after_redo_asks_for_confirmation);
+}
+
+/* Accepted risk R3: with every edit undone the redo branch is not progress, so
+ * new game, main menu and abandon ask nothing and drop it. */
+static void
+check_new_game_with_only_a_redo_branch_asks_nothing(const GamePort* game_port,
+                                                    GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(session->board.redo_history.count, 1);
+    ASSERT_FALSE(game_port->board_progress_would_be_lost_f(&session->board));
+    ASSERT_EQ_INT(press(game_port, session, 'n', 500), GAME_SESSION_RESTARTED);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+    ASSERT_EQ_INT(session->board.redo_history.count, 0);
+    ASSERT_TRUE(session_is_fresh(session, 500));
+}
+
+static void
+check_main_menu_with_only_a_redo_branch_asks_nothing(const GamePort* game_port,
+                                                     GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, 'm', TEST_START_TIME),
+                  GAME_SESSION_LEAVE);
+    ASSERT_EQ_INT(session->pause.screen, PAUSE_SCREEN_PLAYING);
+}
+
+static void
+check_abandon_with_only_a_redo_branch_asks_nothing(const GamePort* game_port,
+                                                   GameSession* session)
+{
+    make_edit(game_port, session);
+    press(game_port, session, 'u', TEST_START_TIME);
+    press(game_port, session, 'p', TEST_START_TIME);
+    press(game_port, session, TEST_DOWN_KEY, TEST_START_TIME);
+    ASSERT_EQ_INT(press(game_port, session, TEST_ENTER_KEY, TEST_START_TIME),
+                  GAME_SESSION_LEAVE);
+}
+
+static void
+test_handle_game_session_key_redo_branch_alone_is_not_progress_at_risk(void)
+{
+    run_session_test(check_new_game_with_only_a_redo_branch_asks_nothing);
+    run_session_test(check_main_menu_with_only_a_redo_branch_asks_nothing);
+    run_session_test(check_abandon_with_only_a_redo_branch_asks_nothing);
+}
+
 int main(void)
 {
     RUN_TEST(test_init_game_session_starts_playing);
@@ -3928,5 +4559,33 @@ int main(void)
     RUN_TEST(test_a_game_continued_from_a_hinted_save_does_not_count);
     RUN_TEST(test_the_hint_mark_survives_capturing_and_continuing);
     RUN_TEST(test_a_game_saved_without_a_hint_counts_when_continued);
+    RUN_TEST(test_handle_game_session_key_redo_reapplies_the_undone_edit);
+    RUN_TEST(test_handle_game_session_key_upper_case_redo_works);
+    RUN_TEST(test_handle_game_session_key_redo_replays_edits_one_per_key);
+    RUN_TEST(test_handle_game_session_key_a_successful_redo_clears_the_hint);
+    RUN_TEST(test_handle_game_session_key_an_empty_redo_keeps_the_hint);
+    RUN_TEST(test_handle_game_session_key_an_empty_redo_shows_the_notice);
+    RUN_TEST(
+        test_handle_game_session_key_redo_without_an_undo_shows_the_notice);
+    RUN_TEST(test_handle_game_session_key_redo_notice_cleared_by_next_key);
+    RUN_TEST(test_handle_game_session_key_only_one_notice_shows_at_a_time);
+    RUN_TEST(test_handle_game_session_key_notices_follow_the_latest_key);
+    RUN_TEST(test_handle_game_session_key_a_new_edit_discards_the_redo);
+    RUN_TEST(test_handle_game_session_key_moving_the_cursor_keeps_the_redo);
+    RUN_TEST(test_handle_game_session_key_redo_is_ignored_in_the_pause_menu);
+    RUN_TEST(test_handle_game_session_key_redo_is_ignored_in_the_prompt);
+    RUN_TEST(test_handle_game_session_key_redo_is_ignored_on_a_solved_board);
+    RUN_TEST(test_init_game_session_from_save_has_nothing_to_redo);
+    RUN_TEST(test_init_game_session_has_nothing_to_redo);
+    RUN_TEST(test_handle_game_session_key_new_game_empties_the_redo);
+    RUN_TEST(test_handle_game_session_key_confirmed_new_game_empties_redo);
+    RUN_TEST(test_handle_game_session_key_restart_button_empties_the_redo);
+    RUN_TEST(test_handle_game_session_key_redo_works_in_a_daily_challenge);
+    RUN_TEST(test_capture_game_session_after_undo_and_redo_matches_the_edit);
+    RUN_TEST(test_capture_game_session_after_undo_ignores_the_redo_branch);
+    RUN_TEST(test_handle_game_session_key_new_game_after_redo_asks_first);
+    RUN_TEST(test_handle_game_session_key_main_menu_after_redo_asks_first);
+    RUN_TEST(
+        test_handle_game_session_key_redo_branch_alone_is_not_progress_at_risk);
     return test_harness_result();
 }

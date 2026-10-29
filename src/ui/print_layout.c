@@ -17,15 +17,16 @@ static void print_button(LayoutPoint origin, const char* label, bool focused);
 static void print_confirm_button(const Board* board);
 static void print_restart_button(const Board* board);
 static void print_result(const Board* board);
-static void print_undo_notice(void);
+static void print_board_notice(const char* text);
 static void print_conflict_notice(const Board* board);
 static void print_timer(int32_t elapsed_seconds);
 static void print_controls_help(void);
 static void print_hint_marks(const BoardHint* hint);
 static void print_side_panel(const BoardHint* hint, bool uncounted);
 
-void print_layout(const Board* board, bool undo_notice, const BoardHint* hint,
-                  bool uncounted, int32_t elapsed_seconds)
+void print_layout(const Board* board, bool undo_notice, bool redo_notice,
+                  const BoardHint* hint, bool uncounted,
+                  int32_t elapsed_seconds)
 {
     int rows = 0;
     int cols = 0;
@@ -46,7 +47,11 @@ void print_layout(const Board* board, bool undo_notice, const BoardHint* hint,
     print_conflict_notice(board);
     if (undo_notice)
     {
-        print_undo_notice();
+        print_board_notice(LAYOUT_UNDO_EMPTY_MESSAGE);
+    }
+    else if (redo_notice)
+    {
+        print_board_notice(LAYOUT_REDO_EMPTY_MESSAGE);
     }
     print_controls_help();
 }
@@ -370,11 +375,11 @@ static void print_result(const Board* board)
     attr_off(attrs, NULL);
 }
 
-static void print_undo_notice(void)
+static void print_board_notice(const char* text)
 {
     LayoutPoint origin = layout_undo_notice_origin();
     attr_on(A_BOLD, NULL);
-    mvprintw(origin.y, origin.x, "%s", LAYOUT_UNDO_EMPTY_MESSAGE);
+    mvprintw(origin.y, origin.x, "%s", text);
     attr_off(A_BOLD, NULL);
 }
 

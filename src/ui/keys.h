@@ -25,6 +25,8 @@ enum
     TETONOR_KEY_STAR             = '*',
     TETONOR_KEY_UNDO             = 'u',
     TETONOR_KEY_UNDO_UPPER       = 'U',
+    TETONOR_KEY_REDO             = 'r',
+    TETONOR_KEY_REDO_UPPER       = 'R',
     TETONOR_KEY_STATISTICS       = 's',
     TETONOR_KEY_STATISTICS_UPPER = 'S',
     TETONOR_KEY_SAVE             = 's',
@@ -76,7 +78,8 @@ typedef enum
     BOARD_COMMAND_PAUSE,     /* open the pause menu */
     BOARD_COMMAND_NEW_GAME,  /* start another game at the same difficulty */
     BOARD_COMMAND_MAIN_MENU, /* leave for the main menu */
-    BOARD_COMMAND_THEME      /* open the theme screen */
+    BOARD_COMMAND_THEME,     /* open the theme screen */
+    BOARD_COMMAND_REDO       /* re-apply the latest undone move */
 } BoardCommandKind;
 
 typedef struct

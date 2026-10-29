@@ -14,8 +14,8 @@ static const int group_field_offsets[] = {SMALLER_OFFSET, OPERATION_OFFSET,
 
 static const char* const help_lines[LAYOUT_HELP_LINE_COUNT] = {
     "Arrows move   0-9 type   + x * operation   BACKSPACE delete",
-    "ENTER/SPACE press button   U undo   H hint   P pause   T theme",
-    "N new game   M main menu   ESC leave without asking",
+    "ENTER/SPACE press button   U undo   R redo   H hint   P pause",
+    "N new game   M main menu   T theme   ESC leave without asking",
 };
 
 static const char* const uncounted_lines[LAYOUT_UNCOUNTED_LINE_COUNT] = {
